@@ -11,7 +11,7 @@ interface Version {
 }
 
 interface Props {
-  platform: "substack" | "instagram" | "threads";
+  platform: "substack" | "instagram" | "threads" | "summary";
   essayContent: string;
 }
 
@@ -52,12 +52,25 @@ const PLATFORM_META = {
       </svg>
     ),
   },
+  summary: {
+    label: "Summary",
+    color: "bg-violet-50 text-violet-700 border-violet-200 hover:bg-violet-100",
+    expandedColor: "border-violet-200 bg-violet-50/50",
+    accentColor: "text-violet-700",
+    btnColor: "bg-violet-600 text-white hover:bg-violet-700",
+    icon: (
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-4 w-4">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" />
+      </svg>
+    ),
+  },
 };
 
 export default function SocialAdaptation({ platform, essayContent }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isRefining, setIsRefining] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [content, setContent] = useState("");
   const [versions, setVersions] = useState<Version[]>([]);
   const [activeVersionIndex, setActiveVersionIndex] = useState(0);
@@ -69,16 +82,23 @@ export default function SocialAdaptation({ platform, essayContent }: Props) {
   const generate = useCallback(async () => {
     setIsGenerating(true);
     try {
-      const response = await fetch("/api/adapt", {
+      const endpoint = platform === "summary" ? "/api/summarize" : "/api/adapt";
+      const body =
+        platform === "summary"
+          ? { essay: essayContent }
+          : { essay: essayContent, platform };
+
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ essay: essayContent, platform }),
+        body: JSON.stringify(body),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
 
-      setContent(data.content);
-      setVersions([{ content: data.content, feedback: "Initial adaptation", timestamp: new Date() }]);
+      const generatedContent = data.content || data.summary;
+      setContent(generatedContent);
+      setVersions([{ content: generatedContent, feedback: "Initial adaptation", timestamp: new Date() }]);
       setActiveVersionIndex(0);
       setIsOpen(true);
       toast(`${meta.label} version created!`, "success");
@@ -118,6 +138,25 @@ export default function SocialAdaptation({ platform, essayContent }: Props) {
       setIsRefining(false);
     }
   }, [content, feedback, meta.label, toast]);
+
+  const saveToArchive = useCallback(async () => {
+    if (!content.trim()) return;
+    setIsSaving(true);
+    try {
+      const title = `${meta.label}: ${content.slice(0, 50).replace(/\n/g, " ")}...`;
+      const response = await fetch("/api/essays", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, content }),
+      });
+      if (!response.ok) throw new Error();
+      toast(`${meta.label} content saved to Archive!`, "success");
+    } catch {
+      toast("Failed to save to archive", "error");
+    } finally {
+      setIsSaving(false);
+    }
+  }, [content, meta.label, toast]);
 
   const selectVersion = (index: number) => {
     setActiveVersionIndex(index);
@@ -180,6 +219,13 @@ export default function SocialAdaptation({ platform, essayContent }: Props) {
             Copy
           </button>
           <button
+            onClick={saveToArchive}
+            disabled={isSaving}
+            className="rounded-md px-2.5 py-1 text-xs font-medium text-muted hover:bg-white hover:text-foreground disabled:opacity-50"
+          >
+            {isSaving ? "Saving..." : "Archive"}
+          </button>
+          <button
             onClick={generate}
             disabled={isGenerating}
             className="rounded-md px-2.5 py-1 text-xs font-medium text-muted hover:bg-white hover:text-foreground disabled:opacity-50"
@@ -210,11 +256,10 @@ export default function SocialAdaptation({ platform, essayContent }: Props) {
             </div>
           )}
 
-          <textarea
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            className="min-h-[200px] w-full resize-y rounded-md border border-border bg-white p-3 text-sm leading-relaxed text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15"
-          />
+          {/* Read-only content display */}
+          <div className="min-h-[120px] whitespace-pre-wrap rounded-md border border-border bg-white p-3 text-sm leading-relaxed text-foreground">
+            {content}
+          </div>
 
           <div className="flex items-center justify-between text-[11px] text-muted">
             <span>{wordCount(content)} words &middot; {content.length} chars</span>
@@ -232,7 +277,7 @@ export default function SocialAdaptation({ platform, essayContent }: Props) {
             )}
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <input
               type="text"
               value={feedback}
@@ -247,7 +292,7 @@ export default function SocialAdaptation({ platform, essayContent }: Props) {
             <button
               onClick={refine}
               disabled={isRefining || !feedback.trim()}
-              className={`flex shrink-0 items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50 ${meta.btnColor}`}
+              className={`flex w-full shrink-0 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto ${meta.btnColor}`}
             >
               {isRefining ? (
                 <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />

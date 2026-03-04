@@ -102,10 +102,6 @@ export default function HistoryPage() {
     setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, isExpanded: !p.isExpanded } : p)));
   }, []);
 
-  const handleContentChange = useCallback((id: string, content: string) => {
-    setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, content } : p)));
-  }, []);
-
   const handleRefine = useCallback(
     async (id: string, feedback: string) => {
       const project = projects.find((p) => p.id === id);
@@ -354,7 +350,7 @@ export default function HistoryPage() {
                           onClick={() => toggleExpand(project.id)}
                           className="mt-2 text-xs font-semibold text-primary hover:underline"
                         >
-                          Read more & edit
+                          Read more
                         </button>
                       </div>
                     )}
@@ -372,7 +368,6 @@ export default function HistoryPage() {
 
                         <RichTextEditor
                           content={project.content}
-                          onChange={(content) => handleContentChange(project.id, content)}
                           onSave={handleSave}
                           onRefine={(feedback) => handleRefine(project.id, feedback)}
                           isRefining={refiningId === project.id}
@@ -388,9 +383,10 @@ export default function HistoryPage() {
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-3.5 w-3.5">
                               <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z" />
                             </svg>
-                            Adapt for Social
+                            Summarize & Adapt
                           </h4>
                           <div className="flex flex-wrap gap-2">
+                            <SocialAdaptation platform="summary" essayContent={project.content} />
                             <SocialAdaptation platform="substack" essayContent={project.content} />
                             <SocialAdaptation platform="instagram" essayContent={project.content} />
                             <SocialAdaptation platform="threads" essayContent={project.content} />
