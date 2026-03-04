@@ -45,5 +45,6 @@ model GenerationHistory {
   content   String
   tone      String   @default("formal academic style")
   language  String   @default("English")
+  imageData String?
   createdAt DateTime @default(now())
 }

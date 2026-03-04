@@ -50,12 +50,34 @@ export default function Home() {
     setImagePreviews(previews);
   }, []);
 
-  const saveToHistory = useCallback(async (title: string, content: string) => {
+  const fileToBase64 = useCallback((file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const canvas = document.createElement("canvas");
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 600;
+        let w = img.width;
+        let h = img.height;
+        if (w > MAX || h > MAX) {
+          const ratio = Math.min(MAX / w, MAX / h);
+          w = Math.round(w * ratio);
+          h = Math.round(h * ratio);
+        }
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext("2d")!.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", 0.7));
+      };
+      img.src = URL.createObjectURL(file);
+    });
+  }, []);
+
+  const saveToHistory = useCallback(async (title: string, content: string, imageData?: string) => {
     try {
       await fetch("/api/history", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, content }),
+        body: JSON.stringify({ title, content, imageData }),
       });
     } catch {
       // Silent
@@ -81,9 +103,21 @@ export default function Home() {
       });
 
       setProjects(newProjects);
-      for (const p of newProjects) saveToHistory(p.title, p.essay);
+
+      (async () => {
+        for (const r of results) {
+          const title = parseTitle(r.essay);
+          let imgData: string | undefined;
+          if (r.imageIndex >= 0 && imageFiles[r.imageIndex]) {
+            try {
+              imgData = await fileToBase64(imageFiles[r.imageIndex]);
+            } catch { /* skip */ }
+          }
+          saveToHistory(title, r.essay, imgData);
+        }
+      })();
     },
-    [saveToHistory, imagePreviews],
+    [saveToHistory, imagePreviews, imageFiles, fileToBase64],
   );
 
   const toggleExpand = useCallback((projectId: string) => {

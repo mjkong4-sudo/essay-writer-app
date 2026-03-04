@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useToast } from "@/components/Toast";
-import { truncate } from "@/lib/utils";
 import RichTextEditor from "@/components/RichTextEditor";
 import ExportMenu from "@/components/ExportMenu";
 import VersionHistory from "@/components/VersionHistory";
@@ -21,6 +20,7 @@ interface HistoryProject {
   originalContent: string;
   tone: string;
   language: string;
+  imageData: string | null;
   createdAt: string;
   versions: Version[];
   activeVersionIndex: number;
@@ -39,7 +39,6 @@ function parseTitle(essay: string): string {
 
 function groupByDate(projects: HistoryProject[]): GroupedProjects[] {
   const groups: Record<string, HistoryProject[]> = {};
-
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const yesterday = new Date(today);
@@ -48,28 +47,15 @@ function groupByDate(projects: HistoryProject[]): GroupedProjects[] {
   for (const project of projects) {
     const d = new Date(project.createdAt);
     const entryDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-
     let label: string;
-    if (entryDate.getTime() === today.getTime()) {
-      label = "Today";
-    } else if (entryDate.getTime() === yesterday.getTime()) {
-      label = "Yesterday";
-    } else {
-      label = entryDate.toLocaleDateString("en-US", {
-        weekday: "long",
-        month: "long",
-        day: "numeric",
-      });
-    }
-
+    if (entryDate.getTime() === today.getTime()) label = "Today";
+    else if (entryDate.getTime() === yesterday.getTime()) label = "Yesterday";
+    else label = entryDate.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
     if (!groups[label]) groups[label] = [];
     groups[label].push(project);
   }
 
-  return Object.entries(groups).map(([label, projects]) => ({
-    label,
-    projects,
-  }));
+  return Object.entries(groups).map(([label, projects]) => ({ label, projects }));
 }
 
 export default function HistoryPage() {
@@ -89,13 +75,14 @@ export default function HistoryPage() {
       if (!response.ok) throw new Error();
       const entries = await response.json();
       setProjects(
-        entries.map((e: { id: string; title: string; content: string; tone: string; language: string; createdAt: string }) => ({
+        entries.map((e: { id: string; title: string; content: string; tone: string; language: string; imageData: string | null; createdAt: string }) => ({
           id: e.id,
           title: e.title,
           content: e.content,
           originalContent: e.content,
           tone: e.tone,
           language: e.language,
+          imageData: e.imageData,
           createdAt: e.createdAt,
           versions: [{ content: e.content, feedback: "Initial generation", timestamp: new Date(e.createdAt) }],
           activeVersionIndex: 0,
@@ -109,27 +96,20 @@ export default function HistoryPage() {
     }
   }, [search, toast]);
 
-  useEffect(() => {
-    fetchEntries();
-  }, [fetchEntries]);
+  useEffect(() => { fetchEntries(); }, [fetchEntries]);
 
   const toggleExpand = useCallback((id: string) => {
-    setProjects((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, isExpanded: !p.isExpanded } : p)),
-    );
+    setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, isExpanded: !p.isExpanded } : p)));
   }, []);
 
   const handleContentChange = useCallback((id: string, content: string) => {
-    setProjects((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, content } : p)),
-    );
+    setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, content } : p)));
   }, []);
 
   const handleRefine = useCallback(
     async (id: string, feedback: string) => {
       const project = projects.find((p) => p.id === id);
       if (!project || !feedback.trim()) return;
-
       setRefiningId(id);
       try {
         const response = await fetch("/api/refine", {
@@ -139,28 +119,19 @@ export default function HistoryPage() {
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Refinement failed");
-
         const refined = data.essay;
         const newTitle = parseTitle(refined);
         const newVersion: Version = { content: refined, feedback, timestamp: new Date() };
-
         setProjects((prev) =>
           prev.map((p) => {
             if (p.id !== id) return p;
             const versions = [...p.versions, newVersion];
-            return {
-              ...p,
-              content: refined,
-              title: newTitle,
-              versions,
-              activeVersionIndex: versions.length - 1,
-            };
+            return { ...p, content: refined, title: newTitle, versions, activeVersionIndex: versions.length - 1 };
           }),
         );
         toast("Essay refined!", "success");
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Refinement failed";
-        toast(message, "error");
+        toast(error instanceof Error ? error.message : "Refinement failed", "error");
       } finally {
         setRefiningId(null);
       }
@@ -173,30 +144,22 @@ export default function HistoryPage() {
       prev.map((p) => {
         if (p.id !== id) return p;
         const version = p.versions[index];
-        return {
-          ...p,
-          content: version.content,
-          title: parseTitle(version.content),
-          activeVersionIndex: index,
-        };
+        return { ...p, content: version.content, title: parseTitle(version.content), activeVersionIndex: index };
       }),
     );
   }, []);
 
-  const handleSave = useCallback(
-    async (title: string, content: string) => {
-      const response = await fetch("/api/essays", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, content }),
-      });
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Failed to save");
-      }
-    },
-    [],
-  );
+  const handleSave = useCallback(async (title: string, content: string) => {
+    const response = await fetch("/api/essays", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title, content }),
+    });
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.error || "Failed to save");
+    }
+  }, []);
 
   const saveToArchive = async (project: HistoryProject) => {
     setSavingId(project.id);
@@ -204,11 +167,7 @@ export default function HistoryPage() {
       const response = await fetch("/api/essays", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: project.title,
-          content: project.content,
-          tone: project.tone,
-        }),
+        body: JSON.stringify({ title: project.title, content: project.content, tone: project.tone }),
       });
       if (!response.ok) throw new Error();
       toast("Saved to Archive!", "success");
@@ -259,12 +218,15 @@ export default function HistoryPage() {
       </div>
 
       {loading ? (
-        <div className="space-y-4">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="rounded-lg border border-border bg-card p-6 shadow-sm">
-              <div className="skeleton mb-3 h-5 w-1/3" />
-              <div className="skeleton mb-2 h-4 w-full" />
-              <div className="skeleton h-4 w-2/3" />
+        <div className="space-y-6">
+          {[1, 2].map((i) => (
+            <div key={i} className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
+              <div className="skeleton h-48 w-full" />
+              <div className="p-4">
+                <div className="skeleton mb-3 h-5 w-1/3" />
+                <div className="skeleton mb-2 h-4 w-full" />
+                <div className="skeleton h-4 w-2/3" />
+              </div>
             </div>
           ))}
         </div>
@@ -282,7 +244,7 @@ export default function HistoryPage() {
         <div className="space-y-8">
           {grouped.map((group) => (
             <div key={group.label}>
-              <h2 className="mb-3 flex items-center gap-2 font-serif text-sm font-semibold text-muted">
+              <h2 className="mb-4 flex items-center gap-2 font-serif text-sm font-semibold text-muted">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-4 w-4">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
                 </svg>
@@ -292,19 +254,36 @@ export default function HistoryPage() {
                 </span>
               </h2>
 
-              <div className="space-y-4">
+              {/* Instagram-style feed */}
+              <div className="space-y-6">
                 {group.projects.map((project) => (
                   <article
                     key={project.id}
                     className="group overflow-hidden rounded-lg border border-border bg-card shadow-sm transition-shadow hover:shadow-md"
                   >
-                    {/* Header bar */}
+                    {/* Image header (Instagram-style) */}
+                    {project.imageData && (
+                      <div className="bg-surface">
+                        <img
+                          src={project.imageData}
+                          alt={project.title}
+                          className="w-full object-contain"
+                          style={{ maxHeight: "400px" }}
+                        />
+                      </div>
+                    )}
+
+                    {/* Post header bar */}
                     <div className="flex items-center justify-between border-b border-border px-4 py-3">
                       <div className="flex items-center gap-2 overflow-hidden">
                         <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10">
-                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-3.5 w-3.5 text-primary">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
+                          {project.imageData ? (
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-3.5 w-3.5 text-primary">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.41a2.25 2.25 0 013.182 0l2.909 2.91M3.75 21h16.5a2.25 2.25 0 002.25-2.25V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z" />
+                            </svg>
+                          ) : (
+                            <span className="text-xs font-bold text-primary">T</span>
+                          )}
                         </div>
                         <div className="min-w-0">
                           <h3
@@ -314,16 +293,9 @@ export default function HistoryPage() {
                             {project.title}
                           </h3>
                           <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-muted sm:text-xs">
-                            <span>
-                              {new Date(project.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                            </span>
+                            <span>{new Date(project.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
                             <span className="h-1 w-1 rounded-full bg-border" />
-                            <span className="rounded bg-primary-light px-1.5 py-0.5 text-primary">
-                              {project.tone}
-                            </span>
-                            <span className="rounded bg-surface px-1.5 py-0.5">
-                              {project.language}
-                            </span>
+                            <span className="rounded bg-primary-light px-1.5 py-0.5 text-primary">{project.tone}</span>
                           </div>
                         </div>
                       </div>
@@ -347,24 +319,14 @@ export default function HistoryPage() {
                         <ExportMenu content={project.content} title={project.title} />
                         {deleteConfirm === project.id ? (
                           <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => deleteEntry(project.id)}
-                              className="rounded-md bg-danger px-2 py-1.5 text-xs font-medium text-white hover:bg-danger-hover"
-                            >
-                              Confirm
-                            </button>
-                            <button
-                              onClick={() => setDeleteConfirm(null)}
-                              className="rounded-md px-2 py-1.5 text-xs text-muted hover:bg-surface"
-                            >
-                              Cancel
-                            </button>
+                            <button onClick={() => deleteEntry(project.id)} className="rounded-md bg-danger px-2 py-1.5 text-xs font-medium text-white hover:bg-danger-hover">Confirm</button>
+                            <button onClick={() => setDeleteConfirm(null)} className="rounded-md px-2 py-1.5 text-xs text-muted hover:bg-surface">Cancel</button>
                           </div>
                         ) : (
                           <button
                             onClick={() => setDeleteConfirm(project.id)}
                             className="rounded-md p-1.5 text-muted transition-opacity hover:bg-red-50 hover:text-danger sm:opacity-0 sm:group-hover:opacity-100"
-                            title="Remove from history"
+                            title="Remove"
                           >
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-4 w-4">
                               <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
@@ -374,7 +336,6 @@ export default function HistoryPage() {
                         <button
                           onClick={() => toggleExpand(project.id)}
                           className="rounded-md p-1.5 text-muted hover:bg-surface hover:text-foreground"
-                          title={project.isExpanded ? "Collapse" : "Expand"}
                         >
                           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={`h-4 w-4 transition-transform ${project.isExpanded ? "rotate-180" : ""}`}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
@@ -383,7 +344,7 @@ export default function HistoryPage() {
                       </div>
                     </div>
 
-                    {/* Collapsed preview */}
+                    {/* Collapsed: caption preview */}
                     {!project.isExpanded && (
                       <div className="px-4 py-3">
                         <p className="line-clamp-3 text-sm leading-relaxed text-foreground/80">
@@ -398,7 +359,7 @@ export default function HistoryPage() {
                       </div>
                     )}
 
-                    {/* Expanded workspace */}
+                    {/* Expanded: full workspace */}
                     {project.isExpanded && (
                       <div className="space-y-4 p-4 sm:p-5">
                         {project.versions.length > 1 && (

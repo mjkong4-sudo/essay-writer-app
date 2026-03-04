@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { title, content, tone, language } = await request.json();
+    const { title, content, tone, language, imageData } = await request.json();
 
     if (!content?.trim()) {
       return NextResponse.json(
@@ -52,6 +52,7 @@ export async function POST(request: NextRequest) {
         content,
         tone: tone || "formal academic style",
         language: language || "English",
+        imageData: imageData || null,
       },
     });
 
