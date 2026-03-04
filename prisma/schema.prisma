@@ -1,0 +1,49 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Essay {
+  id         String   @id @default(cuid())
+  title      String
+  content    String
+  tone       String   @default("formal academic style")
+  isFavorite Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  sources    Source[]
+}
+
+model Source {
+  id      String @id @default(cuid())
+  type    String
+  content String
+  essayId String
+  essay   Essay  @relation(fields: [essayId], references: [id], onDelete: Cascade)
+}
+
+model DictionaryEntry {
+  id          String   @id @default(cuid())
+  word        String
+  translation String
+  definition  String   @default("")
+  example     String   @default("")
+  sourceLang  String
+  targetLang  String
+  createdAt   DateTime @default(now())
+
+  @@unique([word, sourceLang])
+}
+
+model GenerationHistory {
+  id        String   @id @default(cuid())
+  title     String
+  content   String
+  tone      String   @default("formal academic style")
+  language  String   @default("English")
+  createdAt DateTime @default(now())
+}
