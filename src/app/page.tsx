@@ -24,6 +24,7 @@ interface EssayProject {
   versions: Version[];
   activeVersionIndex: number;
   isExpanded: boolean;
+  highlights: string[];
 }
 
 function parseTitle(essay: string): string {
@@ -99,6 +100,7 @@ export default function Home() {
           versions: [{ content: r.essay, feedback: "Initial generation", timestamp: new Date() }],
           activeVersionIndex: 0,
           isExpanded: i === 0,
+          highlights: [],
         };
       });
 
@@ -188,6 +190,24 @@ export default function Home() {
       }),
     );
   }, []);
+
+  const handleHighlight = useCallback(async (projectId: string, text: string) => {
+    const project = projects.find((p) => p.id === projectId);
+    if (!project) return;
+    try {
+      const response = await fetch("/api/highlights", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, essayTitle: project.title, sourceId: project.id }),
+      });
+      if (!response.ok) throw new Error();
+      setProjects((prev) =>
+        prev.map((p) => (p.id === projectId ? { ...p, highlights: [...p.highlights, text] } : p)),
+      );
+    } catch {
+      toast("Failed to save highlight", "error");
+    }
+  }, [projects, toast]);
 
   const handleSave = useCallback(
     async (title: string, content: string) => {
@@ -350,6 +370,8 @@ export default function Home() {
 
                       <RichTextEditor
                         content={project.essay}
+                        highlights={project.highlights}
+                        onHighlight={(text) => handleHighlight(project.id, text)}
                         onSave={handleSave}
                         onRefine={(feedback) => handleRefine(project.id, feedback)}
                         isRefining={refiningProjectId === project.id}

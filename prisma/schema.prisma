@@ -48,3 +48,13 @@ model GenerationHistory {
   imageData String?
   createdAt DateTime @default(now())
 }
+
+model Highlight {
+  id         String   @id @default(cuid())
+  text       String
+  essayTitle String
+  sourceId   String
+  color      String   @default("yellow")
+  note       String   @default("")
+  createdAt  DateTime @default(now())
+}

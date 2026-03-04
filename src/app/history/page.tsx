@@ -25,6 +25,7 @@ interface HistoryProject {
   versions: Version[];
   activeVersionIndex: number;
   isExpanded: boolean;
+  highlights: string[];
 }
 
 interface GroupedProjects {
@@ -87,6 +88,7 @@ export default function HistoryPage() {
           versions: [{ content: e.content, feedback: "Initial generation", timestamp: new Date(e.createdAt) }],
           activeVersionIndex: 0,
           isExpanded: false,
+          highlights: [],
         })),
       );
     } catch {
@@ -144,6 +146,27 @@ export default function HistoryPage() {
       }),
     );
   }, []);
+
+  const handleHighlight = useCallback(
+    async (id: string, text: string) => {
+      const project = projects.find((p) => p.id === id);
+      if (!project) return;
+      try {
+        const response = await fetch("/api/highlights", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text, essayTitle: project.title, sourceId: project.id }),
+        });
+        if (!response.ok) throw new Error();
+        setProjects((prev) =>
+          prev.map((p) => (p.id === id ? { ...p, highlights: [...p.highlights, text] } : p)),
+        );
+      } catch {
+        toast("Failed to save highlight", "error");
+      }
+    },
+    [projects, toast],
+  );
 
   const handleSave = useCallback(async (title: string, content: string) => {
     const response = await fetch("/api/essays", {
@@ -368,6 +391,8 @@ export default function HistoryPage() {
 
                         <RichTextEditor
                           content={project.content}
+                          highlights={project.highlights}
+                          onHighlight={(text) => handleHighlight(project.id, text)}
                           onSave={handleSave}
                           onRefine={(feedback) => handleRefine(project.id, feedback)}
                           isRefining={refiningId === project.id}

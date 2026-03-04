@@ -6,10 +6,43 @@ import { useToast } from "./Toast";
 
 interface Props {
   content: string;
+  highlights?: string[];
+  onHighlight?: (text: string) => void;
   onSave?: (title: string, content: string) => Promise<void>;
   onRefine?: (feedback: string) => Promise<void>;
   isRefining?: boolean;
   versionLabel?: string;
+}
+
+/** Renders content with saved highlight strings wrapped in <mark> (non-overlapping, first match wins). */
+function renderContentWithHighlights(content: string, highlights: string[]): React.ReactNode {
+  if (!highlights?.length) return content;
+  type Seg = { start: number; end: number };
+  const segments: Seg[] = [];
+  for (const h of highlights) {
+    if (!h.trim()) continue;
+    let i = 0;
+    while (i < content.length) {
+      const idx = content.indexOf(h, i);
+      if (idx === -1) break;
+      segments.push({ start: idx, end: idx + h.length });
+      i = idx + h.length;
+    }
+  }
+  segments.sort((a, b) => a.start - b.start);
+  const merged: Seg[] = [];
+  for (const seg of segments) {
+    if (merged.length === 0 || seg.start >= merged[merged.length - 1].end) merged.push(seg);
+  }
+  const nodes: React.ReactNode[] = [];
+  let last = 0;
+  for (const { start, end } of merged) {
+    if (start > last) nodes.push(content.slice(last, start));
+    nodes.push(<mark key={`${start}-${end}`} className="bg-yellow-100 text-foreground rounded px-0.5">{content.slice(start, end)}</mark>);
+    last = end;
+  }
+  if (last < content.length) nodes.push(content.slice(last));
+  return nodes;
 }
 
 function getWordAtPoint(x: number, y: number): string | null {
@@ -42,6 +75,8 @@ function getWordAtPoint(x: number, y: number): string | null {
 
 export default function RichTextEditor({
   content,
+  highlights = [],
+  onHighlight,
   onSave,
   onRefine,
   isRefining,
@@ -53,6 +88,8 @@ export default function RichTextEditor({
   const [isSaving, setIsSaving] = useState(false);
   const [selectedWord, setSelectedWord] = useState("");
   const [feedback, setFeedback] = useState("");
+  const [highlightToolbar, setHighlightToolbar] = useState<{ text: string; top: number; left: number } | null>(null);
+  const essayContainerRef = useRef<HTMLDivElement>(null);
   const isTouchRef = useRef(false);
   const { toast } = useToast();
 
@@ -66,6 +103,15 @@ export default function RichTextEditor({
       window.removeEventListener("mousemove", markMouse);
     };
   }, []);
+
+  useEffect(() => {
+    if (!highlightToolbar) return;
+    const clearIfSelectionGone = () => {
+      if (!window.getSelection()?.toString().trim()) setHighlightToolbar(null);
+    };
+    document.addEventListener("selectionchange", clearIfSelectionGone);
+    return () => document.removeEventListener("selectionchange", clearIfSelectionGone);
+  }, [highlightToolbar]);
 
   const saveToDictionary = useCallback(
     async (word: string, translationText: string, sourceLang: string, targetLang: string) => {
@@ -151,6 +197,43 @@ export default function RichTextEditor({
     [handleWordSelect],
   );
 
+  const checkSelectionForHighlight = useCallback(() => {
+    const sel = window.getSelection();
+    const text = sel?.toString().trim() ?? "";
+    if (!onHighlight || !essayContainerRef.current) return;
+    if (!sel?.rangeCount) return;
+    const range = sel.getRangeAt(0);
+    if (!essayContainerRef.current.contains(range.commonAncestorContainer)) return;
+    if (text.length < 4) return;
+    if (text.split(/\s+/).length <= 1) return;
+    const rect = range.getBoundingClientRect();
+    const containerRect = essayContainerRef.current.getBoundingClientRect();
+    setHighlightToolbar({
+      text,
+      top: rect.top - containerRect.top - 36,
+      left: Math.max(0, rect.left - containerRect.left + rect.width / 2 - 60),
+    });
+  }, [onHighlight]);
+
+  const handleMouseUp = useCallback(() => {
+    if (!onHighlight) return;
+    setTimeout(checkSelectionForHighlight, 10);
+  }, [onHighlight, checkSelectionForHighlight]);
+
+  const handleTouchEnd = useCallback(() => {
+    if (!onHighlight) return;
+    setTimeout(checkSelectionForHighlight, 300);
+  }, [onHighlight, checkSelectionForHighlight]);
+
+  const handleHighlightClick = useCallback(() => {
+    if (highlightToolbar && onHighlight) {
+      onHighlight(highlightToolbar.text);
+      window.getSelection()?.removeAllRanges();
+      setHighlightToolbar(null);
+      toast("Highlight saved!", "success");
+    }
+  }, [highlightToolbar, onHighlight, toast]);
+
   const handleSave = async () => {
     if (!onSave || !content.trim()) return;
     setIsSaving(true);
@@ -192,17 +275,38 @@ export default function RichTextEditor({
 
       <div className="space-y-4">
         {/* Read-only essay display */}
-        <div>
+        <div className="relative">
           <div
+            ref={essayContainerRef}
             onClick={handleClick}
             onDoubleClick={handleDoubleClick}
+            onMouseUp={handleMouseUp}
+            onTouchEnd={handleTouchEnd}
             className="min-h-[200px] cursor-text select-text whitespace-pre-wrap rounded-md border border-border bg-white p-4 text-sm leading-relaxed text-foreground"
           >
-            {displayContent}
+            {renderContentWithHighlights(displayContent, highlights)}
           </div>
+          {highlightToolbar && (
+            <div
+              className="absolute z-10 flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1.5 shadow-lg"
+              style={{ top: highlightToolbar.top, left: highlightToolbar.left }}
+            >
+              <button
+                type="button"
+                onClick={handleHighlightClick}
+                className="flex items-center gap-1.5 rounded bg-yellow-100 px-2.5 py-1 text-xs font-medium text-foreground hover:bg-yellow-200"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-3.5 w-3.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.53 16.122a3 3 0 00-5.78 1.128 3 3 0 004.78 2.122 3 3 0 005.78-1.128 3 3 0 00-4.78-2.122zm0 0L15 16.5" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 17.25v-4.875m0 0a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm3.75 3.75v-4.875m0 0a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0z" />
+                </svg>
+                Highlight
+              </button>
+            </div>
+          )}
           <p className="mt-1 text-xs text-muted">
-            <span className="sm:hidden">Tip: Tap a word to translate it</span>
-            <span className="hidden sm:inline">Tip: Double-click a word to translate it instantly</span>
+            <span className="sm:hidden">Tip: Tap a word to translate; select a sentence to highlight</span>
+            <span className="hidden sm:inline">Tip: Double-click a word to translate; select text to highlight</span>
           </p>
         </div>
 
