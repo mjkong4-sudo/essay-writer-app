@@ -7,7 +7,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const text = typeof body?.text === "string" ? body.text.trim() : "";
-    const voice = typeof body?.voice === "string" && body.voice ? body.voice : "alloy";
+    const voice = typeof body?.voice === "string" && body.voice ? body.voice : "nova";
 
     if (!text) {
       return NextResponse.json({ error: "Text is required" }, { status: 400 });
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
 
     const response = await openai.audio.speech.create({
       model: "tts-1-hd",
-      voice: ["alloy", "echo", "fable", "onyx", "nova", "shimmer"].includes(voice) ? voice : "alloy",
+      voice: ["alloy", "echo", "fable", "onyx", "nova", "shimmer"].includes(voice) ? voice : "nova",
       input: text,
     });
 

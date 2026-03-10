@@ -21,6 +21,15 @@ function chunkText(text: string, maxLen: number): string[] {
   return chunks.filter(Boolean);
 }
 
+function getPreferredVoice(lang: string): SpeechSynthesisVoice | null {
+  if (typeof window === "undefined" || !window.speechSynthesis) return null;
+  let voices = window.speechSynthesis.getVoices();
+  if (voices.length === 0) return null;
+  const target = lang.startsWith("ko") ? "ko-KR" : "en-US";
+  const match = voices.find((v) => v.lang === target || v.lang.startsWith(target.split("-")[0]));
+  return match ?? voices.find((v) => v.lang.startsWith("en")) ?? voices[0] ?? null;
+}
+
 function speakWithBrowser(text: string, lang: string, onEnd: () => void): () => void {
   if (typeof window === "undefined" || !window.speechSynthesis) {
     onEnd();
@@ -29,7 +38,10 @@ function speakWithBrowser(text: string, lang: string, onEnd: () => void): () => 
   window.speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   u.lang = lang.startsWith("ko") ? "ko-KR" : "en-US";
-  u.rate = 0.95;
+  u.rate = 0.92;
+  u.pitch = 1;
+  const voice = getPreferredVoice(lang);
+  if (voice) u.voice = voice;
   u.onend = () => onEnd();
   u.onerror = () => onEnd();
   window.speechSynthesis.speak(u);
@@ -38,6 +50,7 @@ function speakWithBrowser(text: string, lang: string, onEnd: () => void): () => 
 
 export function useSpeech() {
   const [playing, setPlaying] = useState(false);
+  const [loading, setLoading] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const browserCancelRef = useRef<(() => void) | null>(null);
@@ -55,6 +68,7 @@ export function useSpeech() {
     browserCancelRef.current = null;
     if (typeof window !== "undefined") window.speechSynthesis?.cancel();
     setPlaying(false);
+    setLoading(false);
   }, []);
 
   const play = useCallback(async (text: string, lang: string = "en-US") => {
@@ -92,32 +106,42 @@ export function useSpeech() {
       });
 
     setPlaying(true);
+    setLoading(true);
     const controller = new AbortController();
     abortRef.current = controller;
+
+    const playOrFallback = (chunk: string) => {
+      setLoading(false);
+      browserCancelRef.current = speakWithBrowser(chunk, lang, () => {
+        browserCancelRef.current = null;
+        setPlaying(false);
+      });
+    };
 
     if (trimmed.length <= TTS_MAX_CHARS) {
       try {
         const res = await tryApi(trimmed, controller.signal);
         if (res.ok) {
           const blob = await res.blob();
-          await playBlob(blob);
+          setLoading(false);
+          try {
+            await playBlob(blob);
+          } catch {
+            playOrFallback(trimmed);
+            return;
+          }
         } else {
-          browserCancelRef.current = speakWithBrowser(trimmed, lang, () => {
-            browserCancelRef.current = null;
-            setPlaying(false);
-          });
+          playOrFallback(trimmed);
           return;
         }
       } catch (e) {
         if ((e as Error).name === "AbortError") {
           abortRef.current = null;
           setPlaying(false);
+          setLoading(false);
           return;
         }
-        browserCancelRef.current = speakWithBrowser(trimmed, lang, () => {
-          browserCancelRef.current = null;
-          setPlaying(false);
-        });
+        playOrFallback(trimmed);
         return;
       }
       abortRef.current = null;
@@ -130,17 +154,27 @@ export function useSpeech() {
       for (const chunk of chunks) {
         if (controller.signal.aborted) break;
         const res = await tryApi(chunk, controller.signal);
-        if (!res.ok) break;
+        if (!res.ok) {
+          playOrFallback(trimmed);
+          abortRef.current = null;
+          setPlaying(false);
+          return;
+        }
         const blob = await res.blob();
-        await playBlob(blob);
+        setLoading(false);
+        try {
+          await playBlob(blob);
+        } catch {
+          playOrFallback(trimmed);
+          return;
+        }
       }
     } catch (e) {
-      if ((e as Error).name !== "AbortError") {
-        speakWithBrowser(trimmed, lang, () => setPlaying(false));
-      }
+      if ((e as Error).name !== "AbortError") playOrFallback(trimmed);
     }
     abortRef.current = null;
     setPlaying(false);
+    setLoading(false);
   }, [stop]);
 
   useEffect(() => {
@@ -152,5 +186,5 @@ export function useSpeech() {
     };
   }, []);
 
-  return { play, stop, playing };
+  return { play, stop, playing, loading };
 }

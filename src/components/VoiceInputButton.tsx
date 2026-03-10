@@ -72,6 +72,7 @@ export default function VoiceInputButton({ onText, disabled, className }: Props)
       setListening(false);
       recognitionRef.current = null;
       const err = (event as { error?: string })?.error ?? "unknown";
+      if (err === "aborted") return;
       const msg =
         err === "not-allowed"
           ? "Microphone access denied. Allow the site to use your microphone."

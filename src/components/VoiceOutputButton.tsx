@@ -14,24 +14,30 @@ interface Props {
 }
 
 export default function VoiceOutputButton({ content, language = "en", className }: Props) {
-  const { play, stop, playing } = useSpeech();
+  const { play, stop, playing, loading } = useSpeech();
 
   const toggle = useCallback(() => {
-    if (playing) stop();
+    if (playing || loading) stop();
     else {
       const text = getEssayBody(content);
       if (text) play(text, language);
     }
-  }, [playing, stop, play, content, language]);
+  }, [playing, loading, stop, play, content, language]);
 
+  const busy = playing || loading;
   return (
     <button
       type="button"
       onClick={toggle}
       className={`flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl p-1.5 text-muted hover:bg-surface hover:text-foreground sm:min-h-0 sm:min-w-0 ${className ?? ""}`}
-      title={playing ? "Stop playback" : "Listen to essay"}
+      title={busy ? (loading ? "Preparing…" : "Stop playback") : "Listen to essay"}
     >
-      {playing ? (
+      {loading ? (
+        <>
+          <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <span className="text-xs font-medium">Preparing…</span>
+        </>
+      ) : playing ? (
         <>
           <span className="h-2 w-2 animate-pulse rounded-full bg-primary" />
           <span className="text-xs font-medium">Stop</span>

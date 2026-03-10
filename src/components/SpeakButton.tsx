@@ -12,23 +12,26 @@ interface Props {
 }
 
 export default function SpeakButton({ text, lang = "en-US", title = "Listen", className = "", size = "sm" }: Props) {
-  const { play, stop, playing } = useSpeech();
+  const { play, stop, playing, loading } = useSpeech();
 
   const toggle = useCallback(() => {
-    if (playing) stop();
+    if (playing || loading) stop();
     else play(text, lang);
-  }, [playing, stop, play, text, lang]);
+  }, [playing, loading, stop, play, text, lang]);
 
   const iconClass = size === "sm" ? "h-3.5 w-3.5" : "h-4 w-4";
+  const busy = playing || loading;
   return (
     <button
       type="button"
       onClick={toggle}
-      title={playing ? "Stop" : title}
+      title={busy ? (loading ? "Preparing…" : "Stop") : title}
       className={`inline-flex items-center justify-center rounded p-1 text-muted hover:bg-pink-100 dark:hover:bg-pink-900/40 hover:text-foreground ${className}`}
-      aria-label={playing ? "Stop" : title}
+      aria-label={busy ? (loading ? "Preparing speech" : "Stop") : title}
     >
-      {playing ? (
+      {loading ? (
+        <span className="inline-block h-2 w-2 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      ) : playing ? (
         <span className="h-2 w-2 rounded-full bg-primary animate-pulse" />
       ) : (
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={iconClass}>
