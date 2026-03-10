@@ -2,6 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import type { ChatCompletionContentPart } from "openai/resources/chat/completions";
 
+const CORS_ORIGIN = process.env.ESSAY_CORS_ORIGIN || "http://localhost:8000";
+
+function withCors(res: NextResponse): NextResponse {
+  res.headers.set("Access-Control-Allow-Origin", CORS_ORIGIN);
+  res.headers.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.headers.set("Access-Control-Allow-Headers", "Content-Type");
+  return res;
+}
+
+export async function OPTIONS() {
+  return withCors(new NextResponse(null, { status: 200 }));
+}
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -13,16 +26,20 @@ export async function POST(request: NextRequest) {
 
     const hasImages = images.length > 0 && images.every((f) => f && f.size > 0);
     if (!hasImages && !text?.trim()) {
-      return NextResponse.json(
-        { error: "Please provide an image or text to generate an essay from" },
-        { status: 400 },
+      return withCors(
+        NextResponse.json(
+          { error: "Please provide an image or text to generate an essay from" },
+          { status: 400 },
+        ),
       );
     }
 
     if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === "your_openai_api_key_here") {
-      return NextResponse.json(
-        { error: "OpenAI API key is not configured. Add it to your .env file." },
-        { status: 500 },
+      return withCors(
+        NextResponse.json(
+          { error: "OpenAI API key is not configured. Add it to your .env file." },
+          { status: 500 },
+        ),
       );
     }
 
@@ -99,11 +116,11 @@ TITLE: [essay title]
 
     const essay = completion.choices[0].message.content;
     if (!essay) throw new Error("No content generated");
-    return NextResponse.json({ essay });
+    return withCors(NextResponse.json({ essay }));
   } catch (error: unknown) {
     console.error("Essay generation error:", error);
     const message =
       error instanceof Error ? error.message : "Failed to generate essay";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return withCors(NextResponse.json({ error: message }, { status: 500 }));
   }
 }

@@ -190,7 +190,7 @@ export default function ImageUpload({ onImagesChanged }: Props) {
               Drop images, click to upload, or paste from clipboard
             </p>
             <p className="mt-1 text-sm text-muted">
-              Select multiple images at once &mdash; each generates its own essay
+              Add several images at once; generate in batches to see each batch appear in the feed as it completes
             </p>
           </>
         ) : (

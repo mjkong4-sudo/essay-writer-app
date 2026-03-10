@@ -30,12 +30,14 @@ const LANGUAGE_OPTIONS = [
 
 type MultiImageMode = "combine" | "multiple";
 
+const BATCH_SIZE_OPTIONS = [3, 5, 10] as const;
 const USER_FACING_ERROR = "We couldn't generate the essay. Check your connection and try again.";
 
 export default function EssayGenerator({ imageFiles, additionalText, onEssaysGenerated }: Props) {
   const [toneInput, setToneInput] = useState("formal academic style");
   const [language, setLanguage] = useState("English");
   const [multiImageMode, setMultiImageMode] = useState<MultiImageMode>("multiple");
+  const [batchSize, setBatchSize] = useState<number | 0>(5);
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [generationError, setGenerationError] = useState<string | null>(null);
@@ -52,6 +54,7 @@ export default function EssayGenerator({ imageFiles, additionalText, onEssaysGen
     : hasText
       ? 1
       : 0;
+  const useBatches = hasImages && !useCombineMode && imageFiles.length > 1 && batchSize > 0 && batchSize < imageFiles.length;
 
   const generateEssays = async () => {
     if (!hasInput) {
@@ -79,34 +82,77 @@ export default function EssayGenerator({ imageFiles, additionalText, onEssaysGen
         onEssaysGenerated([{ essay: data.essay as string, imageIndex: -1 }]);
         toast("Essay generated!", "success");
       } else if (hasImages) {
-        const promises = imageFiles.map(async (file, index) => {
-          const formData = new FormData();
-          formData.append("image", file);
-          if (hasText) formData.append("text", additionalText.trim());
-          formData.append("tone", toneInput);
-          formData.append("language", language);
-
-          const response = await fetch("/api/generate", { method: "POST", body: formData });
-          const data = await response.json();
-          setProgress((p) => ({ ...p, done: p.done + 1 }));
-          if (!response.ok) throw new Error(data.error || `Failed for image ${index + 1}`);
-          return { essay: data.essay as string, imageIndex: index };
-        });
-
-        const results = await Promise.allSettled(promises);
-        const successes: GeneratedEssay[] = [];
-        let failures = 0;
-        for (const result of results) {
-          if (result.status === "fulfilled") successes.push(result.value);
-          else failures++;
-        }
-        if (successes.length > 0) {
-          onEssaysGenerated(successes);
-          const msg = successes.length === 1 ? "Essay generated!" : `${successes.length} essays generated!`;
-          toast(failures > 0 ? `${msg} (${failures} failed)` : msg, "success");
+        if (useBatches && batchSize > 0) {
+          const size = batchSize;
+          let totalFailures = 0;
+          let totalSuccesses = 0;
+          for (let start = 0; start < imageFiles.length; start += size) {
+            const batch = imageFiles.slice(start, start + size);
+            const promises = batch.map(async (file, i) => {
+              const index = start + i;
+              const formData = new FormData();
+              formData.append("image", file);
+              if (hasText) formData.append("text", additionalText.trim());
+              formData.append("tone", toneInput);
+              formData.append("language", language);
+              const response = await fetch("/api/generate", { method: "POST", body: formData });
+              const data = await response.json();
+              setProgress((p) => ({ ...p, done: p.done + 1 }));
+              if (!response.ok) throw new Error(data.error || `Failed for image ${index + 1}`);
+              return { essay: data.essay as string, imageIndex: index };
+            });
+            const results = await Promise.allSettled(promises);
+            const successes: GeneratedEssay[] = [];
+            for (const result of results) {
+              if (result.status === "fulfilled") {
+                successes.push(result.value);
+                totalSuccesses++;
+              } else totalFailures++;
+            }
+            if (successes.length > 0) {
+              onEssaysGenerated(successes);
+              toast(
+                start + batch.length >= imageFiles.length
+                  ? `Done. ${totalSuccesses} essays in feed.${totalFailures > 0 ? ` (${totalFailures} failed)` : ""}`
+                  : `Batch ${Math.floor(start / size) + 1}: ${successes.length} added to feed`,
+                "success",
+              );
+            }
+          }
+          if (totalFailures > 0 && totalSuccesses === 0) {
+            setGenerationError(USER_FACING_ERROR);
+            toast("All essay generations failed", "error");
+          }
         } else {
-          setGenerationError(USER_FACING_ERROR);
-          toast("All essay generations failed", "error");
+          const promises = imageFiles.map(async (file, index) => {
+            const formData = new FormData();
+            formData.append("image", file);
+            if (hasText) formData.append("text", additionalText.trim());
+            formData.append("tone", toneInput);
+            formData.append("language", language);
+
+            const response = await fetch("/api/generate", { method: "POST", body: formData });
+            const data = await response.json();
+            setProgress((p) => ({ ...p, done: p.done + 1 }));
+            if (!response.ok) throw new Error(data.error || `Failed for image ${index + 1}`);
+            return { essay: data.essay as string, imageIndex: index };
+          });
+
+          const results = await Promise.allSettled(promises);
+          const successes: GeneratedEssay[] = [];
+          let failures = 0;
+          for (const result of results) {
+            if (result.status === "fulfilled") successes.push(result.value);
+            else failures++;
+          }
+          if (successes.length > 0) {
+            onEssaysGenerated(successes);
+            const msg = successes.length === 1 ? "Essay generated!" : `${successes.length} essays generated!`;
+            toast(failures > 0 ? `${msg} (${failures} failed)` : msg, "success");
+          } else {
+            setGenerationError(USER_FACING_ERROR);
+            toast("All essay generations failed", "error");
+          }
         }
       } else {
         const formData = new FormData();
@@ -225,6 +271,40 @@ export default function EssayGenerator({ imageFiles, additionalText, onEssaysGen
                 One essay per image
               </button>
             </div>
+            {multiImageMode === "multiple" && imageFiles.length > 1 && (
+              <div className="mt-2">
+                <label className="mb-1 block text-xs font-medium text-muted">
+                  Process in batches (results appear in feed as each batch completes)
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {BATCH_SIZE_OPTIONS.map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => setBatchSize(n)}
+                      className={`rounded-xl px-3 py-1.5 text-sm font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:ring-offset-0 ${
+                        batchSize === n
+                          ? "bg-primary-light text-primary ring-1 ring-primary/20"
+                          : "border border-border bg-surface text-muted hover:border-primary/30 hover:text-foreground"
+                      }`}
+                    >
+                      {n} at a time
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setBatchSize(0)}
+                    className={`rounded-xl px-3 py-1.5 text-sm font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:ring-offset-0 ${
+                      batchSize === 0
+                        ? "bg-primary-light text-primary ring-1 ring-primary/20"
+                        : "border border-border bg-surface text-muted hover:border-primary/30 hover:text-foreground"
+                    }`}
+                  >
+                    All at once
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

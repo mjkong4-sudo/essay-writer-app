@@ -32,6 +32,7 @@ interface EssayProject {
   activeVersionIndex: number;
   isExpanded: boolean;
   highlights: string[];
+  createdAt: Date;
 }
 
 function parseTitle(essay: string): string {
@@ -115,19 +116,20 @@ export default function Home() {
         const label = r.imageIndex >= 0 ? `Image ${r.imageIndex + 1}` : "Text";
         const preview = r.imageIndex >= 0 ? imagePreviews.get(r.imageIndex) ?? null : null;
         return {
-          id: `${Date.now()}-${i}`,
+          id: `${Date.now()}-${i}-${r.imageIndex}`,
           label,
           imagePreview: preview,
           essay: r.essay,
           title,
           versions: [{ content: r.essay, feedback: "Initial generation", timestamp: new Date() }],
           activeVersionIndex: 0,
-          isExpanded: i === 0,
+          isExpanded: false,
           highlights: [],
+          createdAt: new Date(),
         };
       });
 
-      setProjects(newProjects);
+      setProjects((prev) => [...newProjects, ...prev]);
 
       (async () => {
         for (const r of results) {
@@ -415,7 +417,7 @@ export default function Home() {
                     </div>
                   )}
 
-                  {/* Post header bar */}
+                  {/* Post header bar (SNS-style) */}
                   <div className="flex items-center justify-between border-b border-border px-4 py-3">
                     <div className="flex items-center gap-2 overflow-hidden">
                       <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
@@ -425,6 +427,16 @@ export default function Home() {
                         <h3 className="truncate font-serif text-sm font-semibold sm:text-base">
                           {project.title}
                         </h3>
+                        <p className="text-[10px] text-muted">
+                          {project.label}
+                          {" · "}
+                          {(() => {
+                            const sec = (Date.now() - project.createdAt.getTime()) / 1000;
+                            if (sec < 60) return "Just now";
+                            if (sec < 3600) return `${Math.floor(sec / 60)}m ago`;
+                            return project.createdAt.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+                          })()}
+                        </p>
                         {savedToArchiveIds.has(project.id) && (
                           <span className="mt-0.5 inline-flex items-center gap-1 text-[10px] font-medium text-primary">
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-3 w-3">
