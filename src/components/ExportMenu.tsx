@@ -112,7 +112,7 @@ export default function ExportMenu({ content, title = "Essay" }: Props) {
       <button
         onClick={() => setIsOpen(!isOpen)}
         disabled={!content.trim()}
-        className="flex items-center gap-1.5 rounded-md bg-secondary px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-secondary/90 disabled:cursor-not-allowed disabled:opacity-50"
+        className="flex items-center gap-1.5 rounded-xl bg-secondary px-4 py-2 text-sm font-medium text-white shadow-card transition-transform duration-150 hover:bg-secondary/90 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-primary/30 focus:ring-offset-2 focus:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50"
       >
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-4 w-4">
           <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
@@ -124,7 +124,7 @@ export default function ExportMenu({ content, title = "Essay" }: Props) {
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 top-full z-10 mt-1 w-48 rounded-md border border-border bg-card py-1 shadow-lg">
+        <div className="absolute right-0 top-full z-10 mt-1 w-48 rounded-xl border border-border bg-card py-1 shadow-hover">
           {formats.map((f) => (
             <button
               key={f.format}

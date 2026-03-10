@@ -41,7 +41,8 @@ export default function ImageUpload({ onImagesChanged }: Props) {
 
       setImages((prev) => {
         const next = [...prev, ...newItems];
-        onImagesChanged(next.map((i) => i.file));
+        const filesToReport = next.map((i) => i.file);
+        queueMicrotask(() => onImagesChanged(filesToReport));
         return next;
       });
     },
@@ -53,7 +54,8 @@ export default function ImageUpload({ onImagesChanged }: Props) {
       setImages((prev) => {
         const next = prev.filter((_, i) => i !== index);
         URL.revokeObjectURL(prev[index].preview);
-        onImagesChanged(next.map((i) => i.file));
+        const filesToReport = next.map((i) => i.file);
+        queueMicrotask(() => onImagesChanged(filesToReport));
         return next;
       });
     },
@@ -97,19 +99,20 @@ export default function ImageUpload({ onImagesChanged }: Props) {
     <div className="space-y-3">
       {/* Preview strip */}
       {images.length > 0 && (
-        <div className="rounded-lg border border-border bg-card shadow-sm">
+        <div className="rounded-xl border border-border bg-card shadow-card">
           <div className="flex gap-3 overflow-x-auto p-3">
             {images.map((img, i) => (
               <div key={i} className="group relative shrink-0">
                 <img
                   src={img.preview}
                   alt={img.name}
-                  className="h-20 w-20 rounded-md border border-border object-cover sm:h-28 sm:w-28"
+                  className="h-20 w-20 rounded-xl border border-border object-cover sm:h-28 sm:w-28"
                 />
                 <button
                   onClick={() => removeImage(i)}
-                  className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-danger text-white shadow-sm transition-opacity sm:opacity-0 sm:group-hover:opacity-100"
+                  className="absolute -right-1.5 -top-1.5 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full bg-danger text-white shadow-sm transition-opacity sm:opacity-0 sm:group-hover:opacity-100"
                   title="Remove"
+                  aria-label="Remove image"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-3 w-3">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -124,7 +127,7 @@ export default function ImageUpload({ onImagesChanged }: Props) {
             {/* Add more button */}
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="flex h-20 w-20 shrink-0 flex-col items-center justify-center rounded-md border-2 border-dashed border-border text-muted transition-colors hover:border-primary/40 hover:text-primary sm:h-28 sm:w-28"
+              className="flex h-20 w-20 shrink-0 flex-col items-center justify-center rounded-xl border-2 border-dashed border-border text-muted transition-colors hover:border-primary/40 hover:text-primary sm:h-28 sm:w-28"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-6 w-6">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />

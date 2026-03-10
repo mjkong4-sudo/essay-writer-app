@@ -3,42 +3,99 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { wordCount, charCount } from "@/lib/utils";
 import { useToast } from "./Toast";
+import SpeakButton from "./SpeakButton";
 
 interface Props {
   content: string;
   highlights?: string[];
   onHighlight?: (text: string) => void;
   onSave?: (title: string, content: string) => Promise<void>;
+  onSaveSuccess?: () => void;
   onRefine?: (feedback: string) => Promise<void>;
   isRefining?: boolean;
   versionLabel?: string;
 }
 
-/** Renders content with saved highlight strings wrapped in <mark> (non-overlapping, first match wins). */
-function renderContentWithHighlights(content: string, highlights: string[]): React.ReactNode {
-  if (!highlights?.length) return content;
-  type Seg = { start: number; end: number };
-  const segments: Seg[] = [];
+type Segment = { start: number; end: number; type: "yellow" | "pink" };
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Find all whole-word or exact phrase ranges for dictionary words (pink). */
+function findDictionaryRanges(content: string, words: string[]): Segment[] {
+  const segments: Segment[] = [];
+  for (const w of words) {
+    if (!w.trim()) continue;
+    const trimmed = w.trim();
+    if (trimmed.includes(" ")) {
+      let i = 0;
+      while (i < content.length) {
+        const idx = content.indexOf(trimmed, i);
+        if (idx === -1) break;
+        segments.push({ start: idx, end: idx + trimmed.length, type: "pink" });
+        i = idx + trimmed.length;
+      }
+    } else {
+      const re = new RegExp(`\\b${escapeRegex(trimmed)}\\b`, "gi");
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(content)) !== null) {
+        segments.push({ start: m.index, end: m.index + m[0].length, type: "pink" });
+      }
+    }
+  }
+  return segments;
+}
+
+/** Merge segments: yellow (highlights) take precedence over pink (dictionary) when overlapping. */
+function mergeSegments(yellow: Segment[], pink: Segment[]): Segment[] {
+  const result: Segment[] = [];
+  for (const p of pink) {
+    let s = p.start;
+    const e = p.end;
+    for (const y of yellow) {
+      if (y.end <= s || y.start >= e) continue;
+      if (y.start > s) result.push({ start: s, end: y.start, type: "pink" });
+      s = Math.max(s, y.end);
+      if (s >= e) break;
+    }
+    if (s < e) result.push({ start: s, end: e, type: "pink" });
+  }
+  const all = [...yellow.map((seg) => ({ ...seg, type: "yellow" as const })), ...result];
+  all.sort((a, b) => a.start - b.start);
+  const merged: Segment[] = [];
+  for (const seg of all) {
+    if (merged.length === 0 || seg.start >= merged[merged.length - 1].end) merged.push(seg);
+  }
+  return merged;
+}
+
+/** Renders content with yellow highlights and light-pink dictionary-word highlights. */
+function renderContentWithHighlightsAndDictionary(
+  content: string,
+  highlights: string[],
+  dictionaryWords: string[],
+): React.ReactNode {
+  const yellowSegs: Segment[] = [];
   for (const h of highlights) {
     if (!h.trim()) continue;
     let i = 0;
     while (i < content.length) {
       const idx = content.indexOf(h, i);
       if (idx === -1) break;
-      segments.push({ start: idx, end: idx + h.length });
+      yellowSegs.push({ start: idx, end: idx + h.length, type: "yellow" });
       i = idx + h.length;
     }
   }
-  segments.sort((a, b) => a.start - b.start);
-  const merged: Seg[] = [];
-  for (const seg of segments) {
-    if (merged.length === 0 || seg.start >= merged[merged.length - 1].end) merged.push(seg);
-  }
+  const pinkSegs = findDictionaryRanges(content, dictionaryWords);
+  const merged = mergeSegments(yellowSegs, pinkSegs);
+  if (merged.length === 0) return content;
   const nodes: React.ReactNode[] = [];
   let last = 0;
-  for (const { start, end } of merged) {
+  for (const { start, end, type } of merged) {
     if (start > last) nodes.push(content.slice(last, start));
-    nodes.push(<mark key={`${start}-${end}`} className="bg-yellow-100 text-foreground rounded px-0.5">{content.slice(start, end)}</mark>);
+    const cls = type === "yellow" ? "bg-yellow-100 dark:bg-yellow-900/40" : "bg-pink-100 dark:bg-pink-900/40";
+    nodes.push(<mark key={`${type}-${start}-${end}`} className={`${cls} text-foreground rounded px-0.5`}>{content.slice(start, end)}</mark>);
     last = end;
   }
   if (last < content.length) nodes.push(content.slice(last));
@@ -78,17 +135,32 @@ export default function RichTextEditor({
   highlights = [],
   onHighlight,
   onSave,
+  onSaveSuccess,
   onRefine,
   isRefining,
   versionLabel,
 }: Props) {
   const [translation, setTranslation] = useState("");
-  const [wordTranslation, setWordTranslation] = useState("");
+  const [dictionaryEntry, setDictionaryEntry] = useState<{
+    word: string;
+    translation: string;
+    definition: string;
+    example: string;
+    sourceLang?: string;
+    targetLang?: string;
+    justSaved?: boolean;
+  } | null>(null);
+  const [lookedUpWords, setLookedUpWords] = useState<string[]>([]);
   const [isTranslating, setIsTranslating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [selectedWord, setSelectedWord] = useState("");
   const [feedback, setFeedback] = useState("");
-  const [highlightToolbar, setHighlightToolbar] = useState<{ text: string; top: number; left: number } | null>(null);
+  const [highlightToolbar, setHighlightToolbar] = useState<{
+    text: string;
+    top: number;
+    left: number;
+    canLookUp?: boolean;
+    canHighlight?: boolean;
+  } | null>(null);
   const essayContainerRef = useRef<HTMLDivElement>(null);
   const isTouchRef = useRef(false);
   const { toast } = useToast();
@@ -113,8 +185,25 @@ export default function RichTextEditor({
     return () => document.removeEventListener("selectionchange", clearIfSelectionGone);
   }, [highlightToolbar]);
 
+  const addLookedUpWords = useCallback((words: string[]) => {
+    setLookedUpWords((prev) => {
+      let next = [...prev];
+      for (const w of words) {
+        if (!w.trim()) continue;
+        const t = w.trim();
+        if (!next.some((x) => x.toLowerCase() === t.toLowerCase())) next = [...next, t];
+      }
+      return next;
+    });
+  }, []);
+
   const saveToDictionary = useCallback(
-    async (word: string, translationText: string, sourceLang: string, targetLang: string) => {
+    async (
+      word: string,
+      translationText: string,
+      sourceLang: string,
+      targetLang: string,
+    ): Promise<{ word: string; translation: string; definition: string; example: string } | null> => {
       try {
         const lines = translationText.split("\n");
         let mainTranslation = translationText;
@@ -125,12 +214,22 @@ export default function RichTextEditor({
           else if (line.startsWith("Definition:")) definition = line.replace("Definition:", "").trim();
           else if (line.startsWith("Example:")) example = line.replace("Example:", "").trim();
         }
-        await fetch("/api/dictionary", {
+        const res = await fetch("/api/dictionary", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ word, translation: mainTranslation, definition, example, sourceLang, targetLang }),
         });
-      } catch { /* silent */ }
+        const entry = await res.json();
+        if (!res.ok) return null;
+        return {
+          word: entry.word,
+          translation: entry.translation,
+          definition: entry.definition ?? "",
+          example: entry.example ?? "",
+        };
+      } catch {
+        return null;
+      }
     },
     [],
   );
@@ -138,21 +237,63 @@ export default function RichTextEditor({
   const translateText = useCallback(
     async (text: string, mode: "full" | "word" = "full") => {
       if (!text.trim()) return;
-      if (mode === "word") setSelectedWord(text);
       setIsTranslating(true);
       try {
-        const response = await fetch("/api/translate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text, mode }),
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error);
         if (mode === "word") {
-          setWordTranslation(data.translation);
-          saveToDictionary(text, data.translation, data.sourceLang, data.targetLang);
-          toast(`"${text}" saved to your dictionary`, "success");
+          const norm = text.trim().toLowerCase();
+          const searchRes = await fetch(`/api/dictionary?search=${encodeURIComponent(text.trim())}`);
+          if (searchRes.ok) {
+            const entries: { word: string; translation: string; definition: string; example: string; sourceLang?: string; targetLang?: string }[] = await searchRes.json();
+            const existing = entries.find((e) => e.word.trim().toLowerCase() === norm);
+            if (existing) {
+              setDictionaryEntry({
+                word: existing.word,
+                translation: existing.translation,
+                definition: existing.definition ?? "",
+                example: existing.example ?? "",
+                sourceLang: existing.sourceLang,
+                targetLang: existing.targetLang,
+                justSaved: false,
+              });
+              addLookedUpWords([text.trim(), existing.word]);
+              toast(`"${existing.word}" from your dictionary`, "success");
+              setIsTranslating(false);
+              return;
+            }
+          }
+          const response = await fetch("/api/translate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text, mode }),
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error);
+          const entry = await saveToDictionary(text, data.translation, data.sourceLang, data.targetLang);
+          if (entry) {
+            setDictionaryEntry({ ...entry, sourceLang: data.sourceLang, targetLang: data.targetLang, justSaved: true });
+            addLookedUpWords([text.trim(), entry.word]);
+            toast(`"${text}" saved to your dictionary`, "success");
+          } else {
+            setDictionaryEntry({
+              word: text,
+              translation: data.translation,
+              definition: "",
+              example: "",
+              sourceLang: data.sourceLang,
+              targetLang: data.targetLang,
+              justSaved: true,
+            });
+            addLookedUpWords([text.trim()]);
+            toast(`"${text}" saved to your dictionary`, "success");
+          }
         } else {
+          const response = await fetch("/api/translate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text, mode }),
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error);
           setTranslation(data.translation);
           toast("Translation complete!", "success");
         }
@@ -162,7 +303,7 @@ export default function RichTextEditor({
         setIsTranslating(false);
       }
     },
-    [toast, saveToDictionary],
+    [toast, saveToDictionary, addLookedUpWords],
   );
 
   const handleWordSelect = useCallback(
@@ -200,33 +341,43 @@ export default function RichTextEditor({
   const checkSelectionForHighlight = useCallback(() => {
     const sel = window.getSelection();
     const text = sel?.toString().trim() ?? "";
-    if (!onHighlight || !essayContainerRef.current) return;
-    if (!sel?.rangeCount) return;
+    if (!essayContainerRef.current) return;
+    if (!sel?.rangeCount || !text) return;
     const range = sel.getRangeAt(0);
     if (!essayContainerRef.current.contains(range.commonAncestorContainer)) return;
-    if (text.length < 4) return;
-    if (text.split(/\s+/).length <= 1) return;
+    const wordCount = text.split(/\s+/).length;
+    const canLookUp = wordCount >= 1 && wordCount <= 6;
+    const canHighlight = onHighlight && text.length >= 4 && wordCount > 1;
+    if (!canLookUp && !canHighlight) return;
     const rect = range.getBoundingClientRect();
     const containerRect = essayContainerRef.current.getBoundingClientRect();
     setHighlightToolbar({
       text,
       top: rect.top - containerRect.top - 36,
-      left: Math.max(0, rect.left - containerRect.left + rect.width / 2 - 60),
+      left: Math.max(0, rect.left - containerRect.left + rect.width / 2 - 80),
+      canLookUp,
+      canHighlight: !!canHighlight,
     });
   }, [onHighlight]);
 
   const handleMouseUp = useCallback(() => {
-    if (!onHighlight) return;
     setTimeout(checkSelectionForHighlight, 10);
-  }, [onHighlight, checkSelectionForHighlight]);
+  }, [checkSelectionForHighlight]);
 
   const handleTouchEnd = useCallback(() => {
-    if (!onHighlight) return;
     setTimeout(checkSelectionForHighlight, 300);
-  }, [onHighlight, checkSelectionForHighlight]);
+  }, [checkSelectionForHighlight]);
+
+  const handleLookUpClick = useCallback(() => {
+    if (highlightToolbar?.canLookUp) {
+      handleWordSelect(highlightToolbar.text);
+      window.getSelection()?.removeAllRanges();
+      setHighlightToolbar(null);
+    }
+  }, [highlightToolbar, handleWordSelect]);
 
   const handleHighlightClick = useCallback(() => {
-    if (highlightToolbar && onHighlight) {
+    if (highlightToolbar && onHighlight && highlightToolbar.canHighlight) {
       onHighlight(highlightToolbar.text);
       window.getSelection()?.removeAllRanges();
       setHighlightToolbar(null);
@@ -241,6 +392,7 @@ export default function RichTextEditor({
       const titleMatch = content.match(/^TITLE:\s*(.+)/m);
       const title = titleMatch ? titleMatch[1].trim() : "Untitled Essay";
       await onSave(title, content);
+      onSaveSuccess?.();
       toast("Essay saved to archive!", "success");
     } catch {
       toast("Failed to save essay", "error");
@@ -254,7 +406,7 @@ export default function RichTextEditor({
   const displayContent = content.replace(/^TITLE:.*\n?/m, "").trim();
 
   return (
-    <div className="rounded-lg border border-border bg-card p-4 shadow-sm sm:p-6">
+    <div className="rounded-xl border border-border bg-card p-4 shadow-card sm:p-6">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <h3 className="font-serif text-lg font-semibold">Your Essay</h3>
@@ -274,7 +426,7 @@ export default function RichTextEditor({
       </div>
 
       <div className="space-y-4">
-        {/* Read-only essay display */}
+        {/* Read-only essay display + floating dictionary card */}
         <div className="relative">
           <div
             ref={essayContainerRef}
@@ -282,62 +434,107 @@ export default function RichTextEditor({
             onDoubleClick={handleDoubleClick}
             onMouseUp={handleMouseUp}
             onTouchEnd={handleTouchEnd}
-            className="min-h-[200px] cursor-text select-text whitespace-pre-wrap rounded-md border border-border bg-white p-4 text-sm leading-relaxed text-foreground"
+            className="min-h-[200px] cursor-text select-text whitespace-pre-wrap rounded-xl bg-transparent p-4 text-sm leading-relaxed text-foreground"
           >
-            {renderContentWithHighlights(displayContent, highlights)}
+            {renderContentWithHighlightsAndDictionary(displayContent, highlights, lookedUpWords)}
           </div>
           {highlightToolbar && (
             <div
-              className="absolute z-10 flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1.5 shadow-lg"
+              className="absolute z-20 flex items-center gap-1 rounded-xl border border-border bg-card px-2 py-1.5 shadow-hover"
               style={{ top: highlightToolbar.top, left: highlightToolbar.left }}
             >
-              <button
-                type="button"
-                onClick={handleHighlightClick}
-                className="flex items-center gap-1.5 rounded bg-yellow-100 px-2.5 py-1 text-xs font-medium text-foreground hover:bg-yellow-200"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-3.5 w-3.5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.53 16.122a3 3 0 00-5.78 1.128 3 3 0 004.78 2.122 3 3 0 005.78-1.128 3 3 0 00-4.78-2.122zm0 0L15 16.5" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 17.25v-4.875m0 0a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm3.75 3.75v-4.875m0 0a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0z" />
-                </svg>
-                Highlight
-              </button>
+              {highlightToolbar.canLookUp && (
+                <button
+                  type="button"
+                  onClick={handleLookUpClick}
+                  className="flex items-center gap-1.5 rounded bg-pink-100 dark:bg-pink-900/40 px-2.5 py-1 text-xs font-medium text-foreground hover:bg-pink-200 dark:hover:bg-pink-800/50"
+                  title="Look up in dictionary (word or idiom)"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-3.5 w-3.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+                  </svg>
+                  Look up
+                </button>
+              )}
+              {highlightToolbar.canHighlight && (
+                <button
+                  type="button"
+                  onClick={handleHighlightClick}
+                  className="flex items-center gap-1.5 rounded bg-yellow-100 dark:bg-yellow-900/40 px-2.5 py-1 text-xs font-medium text-foreground hover:bg-yellow-200 dark:hover:bg-yellow-800/50"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-3.5 w-3.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9.53 16.122a3 3 0 00-5.78 1.128 3 3 0 004.78 2.122 3 3 0 005.78-1.128 3 3 0 00-4.78-2.122zm0 0L15 16.5" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 17.25v-4.875m0 0a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm3.75 3.75v-4.875m0 0a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0z" />
+                  </svg>
+                  Highlight
+                </button>
+              )}
             </div>
           )}
           <p className="mt-1 text-xs text-muted">
-            <span className="sm:hidden">Tip: Tap a word to translate; select a sentence to highlight</span>
-            <span className="hidden sm:inline">Tip: Double-click a word to translate; select text to highlight</span>
+            <span className="sm:hidden">Tip: Tap a word to look up; select a word or phrase (idiom) for Look up; select a sentence to highlight</span>
+            <span className="hidden sm:inline">Tip: Double-click a word, or select a phrase and click Look up for idioms; select text to highlight</span>
           </p>
-        </div>
 
-        {/* Word translation popup */}
-        {wordTranslation && (
-          <div className="rounded-md border border-border border-l-4 border-l-secondary bg-white p-4 shadow-sm">
-            <div className="mb-2 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold text-secondary">
-                  &ldquo;{selectedWord}&rdquo;
-                </span>
-                <span className="rounded-full bg-secondary/10 px-2 py-0.5 text-[10px] font-medium text-secondary">
-                  saved to dictionary
-                </span>
+          {/* Floating dictionary card — on mobile fixed at bottom above tab bar; on desktop top-right of essay */}
+          {dictionaryEntry && (
+            <div className="fixed bottom-0 left-0 right-0 z-30 px-4 pb-[max(1rem,calc(3.5rem+env(safe-area-inset-bottom,0px)))] pt-4 sm:absolute sm:right-0 sm:top-0 sm:left-auto sm:bottom-auto sm:z-20 sm:w-full sm:min-w-[280px] sm:max-w-md sm:p-0 sm:pb-0 sm:pt-0 sm:px-0">
+              <div className="mx-auto max-w-sm rounded-xl border border-border border-l-4 border-l-secondary bg-card p-4 shadow-hover sm:mx-0 sm:max-w-none">
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-secondary">
+                      &ldquo;{dictionaryEntry.word}&rdquo;
+                    </span>
+                    <SpeakButton
+                      text={dictionaryEntry.word}
+                      lang={dictionaryEntry.sourceLang === "Korean" ? "ko-KR" : "en-US"}
+                      title="Hear word"
+                    />
+                    <span className="rounded-full bg-secondary/10 px-2 py-0.5 text-[10px] font-medium text-secondary">
+                      {dictionaryEntry.justSaved ? "saved to dictionary" : "from your dictionary"}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setDictionaryEntry(null)}
+                    className="min-h-[44px] min-w-[44px] rounded-xl text-muted hover:bg-surface hover:text-foreground"
+                    aria-label="Close"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-4 w-4">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center gap-1">
+                    <span className="font-medium text-muted">Translation: </span>
+                    <span className="text-foreground">{dictionaryEntry.translation}</span>
+                    <SpeakButton
+                      text={dictionaryEntry.translation}
+                      lang={dictionaryEntry.targetLang === "Korean" ? "ko-KR" : "en-US"}
+                      title="Hear translation"
+                    />
+                  </div>
+                  {dictionaryEntry.definition && (
+                    <div>
+                      <span className="font-medium text-muted">Definition: </span>
+                      <span className="text-foreground/90">{dictionaryEntry.definition}</span>
+                    </div>
+                  )}
+                  {dictionaryEntry.example && (
+                    <div>
+                      <span className="font-medium text-muted">Example: </span>
+                      <span className="text-foreground/90 italic">&ldquo;{dictionaryEntry.example}&rdquo;</span>
+                    </div>
+                  )}
+                </div>
               </div>
-              <button
-                onClick={() => { setWordTranslation(""); setSelectedWord(""); }}
-                className="text-muted hover:text-foreground"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-4 w-4">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
             </div>
-            <p className="whitespace-pre-wrap text-sm text-foreground/80">{wordTranslation}</p>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Feedback / Refine */}
         {onRefine && (
-          <div className="rounded-md border border-primary/20 bg-primary-light p-4">
+          <div className="rounded-xl border border-primary/20 bg-primary-light p-4">
             <label className="mb-2 block text-sm font-semibold text-primary">
               Want to improve this essay? Give feedback:
             </label>
@@ -354,14 +551,14 @@ export default function RichTextEditor({
                 }}
                 placeholder="e.g., Make it more concise, add examples..."
                 disabled={isRefining}
-                className="flex-1 rounded-md border border-primary/20 bg-white px-3 py-2.5 text-sm text-foreground placeholder:text-muted/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15 disabled:opacity-50"
+                className="flex-1 rounded-xl border border-primary/20 bg-card px-3 py-2.5 text-sm text-foreground placeholder:text-muted/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 focus:ring-offset-0 disabled:opacity-50"
               />
               <button
                 onClick={() => {
                   if (feedback.trim()) { onRefine(feedback); setFeedback(""); }
                 }}
                 disabled={isRefining || !feedback.trim()}
-                className="flex w-full items-center justify-center gap-1.5 rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-white hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-white hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
               >
                 {isRefining ? (
                   <>
@@ -389,7 +586,7 @@ export default function RichTextEditor({
           <button
             onClick={() => translateText(content, "full")}
             disabled={isTranslating || !content.trim()}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-secondary/30 bg-secondary/5 px-4 py-2.5 text-sm font-medium text-secondary hover:bg-secondary/10 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-initial sm:justify-start"
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-secondary/30 bg-secondary/5 px-4 py-2.5 text-sm font-medium text-secondary hover:bg-secondary/10 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-initial sm:justify-start"
           >
             {isTranslating ? (
               <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-secondary border-t-transparent" />
@@ -404,7 +601,7 @@ export default function RichTextEditor({
           <button
             onClick={handleSave}
             disabled={isSaving || !content.trim()}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-primary/30 bg-primary/5 px-4 py-2.5 text-sm font-medium text-primary hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-initial sm:justify-start"
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2.5 text-sm font-medium text-primary hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-initial sm:justify-start"
           >
             {isSaving ? (
               <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
@@ -419,7 +616,7 @@ export default function RichTextEditor({
 
         {/* Full translation result */}
         {translation && (
-          <div className="rounded-md border border-border border-l-4 border-l-primary bg-surface p-4">
+          <div className="rounded-xl border border-border border-l-4 border-l-primary bg-surface p-4">
             <div className="mb-2 flex items-center justify-between">
               <span className="font-serif text-sm font-semibold text-primary">Full Translation</span>
               <div className="flex gap-2">

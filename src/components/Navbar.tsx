@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import NavbarAuth from "@/components/NavbarAuth";
 
 const links = [
   { href: "/", label: "Writer", icon: "M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" },
@@ -16,11 +17,14 @@ export default function Navbar() {
 
   return (
     <>
-      {/* Desktop top navbar */}
-      <nav className="sticky top-0 z-50 h-14 border-b border-border bg-card/80 backdrop-blur-md sm:h-16">
+      {/* Desktop top navbar — glassmorphism */}
+      <nav className="sticky top-0 z-50 h-14 border-b border-border border-white/10 bg-card/70 backdrop-blur-lg sm:h-16 dark:border-white/5">
         <div className="mx-auto flex h-full max-w-5xl items-center justify-between px-4">
-          <Link href="/" className="font-serif text-lg font-bold tracking-tight text-foreground sm:text-xl">
-            AI Essay Writer
+          <Link href="/" className="flex items-center gap-1.5 font-serif text-lg font-bold tracking-tight text-foreground sm:text-xl focus:outline-none focus:ring-2 focus:ring-primary/30 focus:ring-offset-2 focus:ring-offset-background rounded-lg">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-primary/10 text-primary sm:h-8 sm:w-8" aria-hidden>
+              <span className="font-serif text-sm font-bold sm:text-base">T</span>
+            </span>
+            ThinkDraft
           </Link>
 
           {/* Desktop links -- hidden on mobile */}
@@ -31,7 +35,7 @@ export default function Navbar() {
                 <Link
                   key={link.href}
                   href={link.href}
-                  className={`relative flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                  className={`relative flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition-colors duration-200 hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:ring-offset-2 focus:ring-offset-background ${
                     isActive
                       ? "text-primary"
                       : "text-muted hover:text-foreground"
@@ -47,12 +51,13 @@ export default function Navbar() {
                 </Link>
               );
             })}
+            <NavbarAuth />
           </div>
         </div>
       </nav>
 
-      {/* Mobile bottom tab bar */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card/95 backdrop-blur-md safe-bottom sm:hidden">
+      {/* Mobile bottom tab bar — glassmorphism */}
+      <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-border border-white/10 bg-card/80 backdrop-blur-lg safe-bottom sm:hidden dark:border-white/5">
         <div className="flex h-14 items-stretch">
           {links.map((link) => {
             const isActive = pathname === link.href;
@@ -60,7 +65,7 @@ export default function Navbar() {
               <Link
                 key={link.href}
                 href={link.href}
-                className={`flex flex-1 flex-col items-center justify-center gap-0.5 transition-colors ${
+                className={`flex flex-1 flex-col items-center justify-center gap-0.5 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:ring-inset ${
                   isActive ? "text-primary" : "text-muted"
                 }`}
               >

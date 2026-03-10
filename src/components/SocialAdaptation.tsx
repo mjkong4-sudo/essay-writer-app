@@ -173,7 +173,7 @@ export default function SocialAdaptation({ platform, essayContent }: Props) {
       <button
         onClick={generate}
         disabled={isGenerating}
-        className={`flex items-center gap-1.5 rounded-md border px-4 py-2 text-sm font-medium shadow-sm disabled:cursor-not-allowed disabled:opacity-50 ${meta.color}`}
+        className={`flex items-center gap-1.5 rounded-xl border px-4 py-2 text-sm font-medium shadow-sm disabled:cursor-not-allowed disabled:opacity-50 ${meta.color}`}
       >
         {isGenerating ? (
           <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
@@ -186,7 +186,7 @@ export default function SocialAdaptation({ platform, essayContent }: Props) {
   }
 
   return (
-    <div className={`rounded-lg border p-4 shadow-sm ${meta.expandedColor}`}>
+    <div className={`rounded-xl border p-4 shadow-sm ${meta.expandedColor}`}>
       {/* Header */}
       <div className="mb-3 flex items-center justify-between">
         <button
@@ -196,7 +196,7 @@ export default function SocialAdaptation({ platform, essayContent }: Props) {
           {meta.icon}
           {meta.label}
           {versions.length > 1 && (
-            <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold shadow-sm">
+            <span className="rounded-full bg-card px-2 py-0.5 text-[10px] font-bold shadow-sm">
               v{activeVersionIndex + 1}/{versions.length}
             </span>
           )}
@@ -214,21 +214,21 @@ export default function SocialAdaptation({ platform, essayContent }: Props) {
         <div className="flex items-center gap-1.5">
           <button
             onClick={copyToClipboard}
-            className="rounded-md px-2.5 py-1 text-xs font-medium text-muted hover:bg-white hover:text-foreground"
+            className="rounded-xl px-2.5 py-1 text-xs font-medium text-muted hover:bg-surface hover:text-foreground"
           >
             Copy
           </button>
           <button
             onClick={saveToArchive}
             disabled={isSaving}
-            className="rounded-md px-2.5 py-1 text-xs font-medium text-muted hover:bg-white hover:text-foreground disabled:opacity-50"
+            className="rounded-xl px-2.5 py-1 text-xs font-medium text-muted hover:bg-surface hover:text-foreground disabled:opacity-50"
           >
             {isSaving ? "Saving..." : "Archive"}
           </button>
           <button
             onClick={generate}
             disabled={isGenerating}
-            className="rounded-md px-2.5 py-1 text-xs font-medium text-muted hover:bg-white hover:text-foreground disabled:opacity-50"
+            className="rounded-xl px-2.5 py-1 text-xs font-medium text-muted hover:bg-surface hover:text-foreground disabled:opacity-50"
           >
             {isGenerating ? "..." : "Regenerate"}
           </button>
@@ -245,8 +245,8 @@ export default function SocialAdaptation({ platform, essayContent }: Props) {
                   onClick={() => selectVersion(i)}
                   className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
                     i === activeVersionIndex
-                      ? "bg-white text-foreground shadow-sm"
-                      : "text-muted hover:bg-white/60"
+                      ? "bg-card text-foreground shadow-sm"
+                      : "text-muted hover:bg-surface"
                   }`}
                   title={v.feedback}
                 >
@@ -257,7 +257,7 @@ export default function SocialAdaptation({ platform, essayContent }: Props) {
           )}
 
           {/* Read-only content display */}
-          <div className="min-h-[120px] whitespace-pre-wrap rounded-md border border-border bg-white p-3 text-sm leading-relaxed text-foreground">
+          <div className="min-h-[120px] whitespace-pre-wrap rounded-xl border border-border bg-card p-3 text-sm leading-relaxed text-foreground">
             {content}
           </div>
 
@@ -287,12 +287,12 @@ export default function SocialAdaptation({ platform, essayContent }: Props) {
               }}
               placeholder="Give feedback to improve this version..."
               disabled={isRefining}
-              className="flex-1 rounded-md border border-border bg-white px-3 py-2 text-sm text-foreground placeholder:text-muted/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15 disabled:opacity-50"
+              className="flex-1 rounded-xl border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 focus:ring-offset-0 disabled:opacity-50"
             />
             <button
               onClick={refine}
               disabled={isRefining || !feedback.trim()}
-              className={`flex w-full shrink-0 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto ${meta.btnColor}`}
+              className={`flex w-full shrink-0 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto ${meta.btnColor}`}
             >
               {isRefining ? (
                 <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />

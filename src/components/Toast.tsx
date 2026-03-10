@@ -60,11 +60,16 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext value={{ toast }}>
       {children}
-      <div className="fixed bottom-18 left-4 right-4 z-[100] flex flex-col gap-2 sm:bottom-4 sm:left-auto sm:right-4 sm:max-w-sm">
+      <div
+        className="fixed bottom-18 left-4 right-4 z-[100] flex flex-col gap-2 sm:bottom-4 sm:left-auto sm:right-4 sm:max-w-sm"
+        role="status"
+        aria-live="polite"
+        aria-atomic="false"
+      >
         {toasts.map((t) => (
           <div
             key={t.id}
-            className={`flex items-center gap-2 rounded-md border border-border border-l-4 ${colorMap[t.type].border} bg-white px-4 py-3 shadow-lg animate-[slideIn_0.2s_ease-out]`}
+            className={`flex items-center gap-2 rounded-xl border border-border border-l-4 ${colorMap[t.type].border} bg-card px-4 py-3 shadow-hover animate-[slideIn_0.2s_ease-out]`}
             role="alert"
           >
             <svg

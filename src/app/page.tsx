@@ -1,13 +1,20 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { useSession } from "next-auth/react";
+import Link from "next/link";
 import ImageUpload from "@/components/ImageUpload";
 import EssayGenerator, { type GeneratedEssay } from "@/components/EssayGenerator";
 import RichTextEditor from "@/components/RichTextEditor";
 import ExportMenu from "@/components/ExportMenu";
 import VersionHistory from "@/components/VersionHistory";
 import SocialAdaptation from "@/components/SocialAdaptation";
+import VoiceInputButton from "@/components/VoiceInputButton";
+import VoiceOutputButton from "@/components/VoiceOutputButton";
+import DictionaryDrawer from "@/components/DictionaryDrawer";
 import { useToast } from "@/components/Toast";
+
+const GUEST_HINT_KEY = "thinkdraft-guest-hint-dismissed";
 
 interface Version {
   content: string;
@@ -33,14 +40,30 @@ function parseTitle(essay: string): string {
 }
 
 export default function Home() {
+  const { data: session, status } = useSession();
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<Map<number, string>>(new Map());
   const [additionalText, setAdditionalText] = useState("");
   const [projects, setProjects] = useState<EssayProject[]>([]);
   const [refiningProjectId, setRefiningProjectId] = useState<string | null>(null);
+  const [savedToArchiveIds, setSavedToArchiveIds] = useState<Set<string>>(new Set());
+  const [guestHintDismissed, setGuestHintDismissed] = useState(false);
+  const [dictionaryDrawerOpen, setDictionaryDrawerOpen] = useState(false);
+  const archivedByProjectRef = useRef<Set<string>>(new Set());
   const { toast } = useToast();
 
   const hasInput = imageFiles.length > 0 || additionalText.trim().length > 0;
+  const showGuestHint = status === "unauthenticated" && !guestHintDismissed;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (localStorage.getItem(GUEST_HINT_KEY) === "1") setGuestHintDismissed(true);
+  }, []);
+
+  const dismissGuestHint = useCallback(() => {
+    setGuestHintDismissed(true);
+    if (typeof window !== "undefined") localStorage.setItem(GUEST_HINT_KEY, "1");
+  }, []);
 
   const handleImagesChanged = useCallback((files: File[]) => {
     setImageFiles(files);
@@ -198,12 +221,31 @@ export default function Home() {
       const response = await fetch("/api/highlights", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, essayTitle: project.title, sourceId: project.id }),
+        body: JSON.stringify({
+          text,
+          essayTitle: project.title,
+          sourceId: project.id,
+          essayContent: project.essay,
+        }),
       });
       if (!response.ok) throw new Error();
       setProjects((prev) =>
         prev.map((p) => (p.id === projectId ? { ...p, highlights: [...p.highlights, text] } : p)),
       );
+      if (!archivedByProjectRef.current.has(projectId)) {
+        try {
+          await fetch("/api/essays", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ title: project.title, content: project.essay }),
+          });
+          archivedByProjectRef.current.add(projectId);
+          setSavedToArchiveIds((prev) => new Set(prev).add(projectId));
+          toast("Essay saved to Archive so you can find it anytime", "success");
+        } catch {
+          // Archive is best-effort
+        }
+      }
     } catch {
       toast("Failed to save highlight", "error");
     }
@@ -237,14 +279,47 @@ export default function Home() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-6 sm:py-12">
+      {/* Guest hint */}
+      {showGuestHint && (
+        <div className="mb-6 flex items-center justify-between gap-4 rounded-xl border border-primary/20 bg-primary-light/50 px-4 py-3 text-sm">
+          <p className="text-foreground/90">
+            Sign in to sync essays across devices and keep your dictionary forever.
+          </p>
+          <div className="flex shrink-0 items-center gap-2">
+            <Link
+              href="/login"
+              className="rounded-xl bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-hover"
+            >
+              Sign in
+            </Link>
+            <button
+              type="button"
+              onClick={dismissGuestHint}
+              className="rounded-xl p-1.5 text-muted hover:bg-primary/10 hover:text-foreground"
+              aria-label="Dismiss"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-4 w-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Hero */}
       <div className="mb-8 text-center sm:mb-12">
         <h1 className="font-serif text-3xl font-bold tracking-tight text-foreground sm:text-5xl">
-          AI Essay Writer
+          ThinkDraft
         </h1>
+        <p className="mx-auto mt-2 font-serif text-sm italic text-primary sm:text-base">
+          Think it. Draft it.
+        </p>
         <p className="mx-auto mt-3 max-w-2xl text-sm leading-relaxed text-muted sm:mt-4 sm:text-lg">
           Upload images or enter text, choose your style, and let AI craft
           polished essays.
+        </p>
+        <p className="mx-auto mt-2 max-w-2xl text-xs text-muted/80 sm:text-sm">
+          Generate essays from images or notes, look up words, and export to PDF or Word.
         </p>
       </div>
 
@@ -252,10 +327,10 @@ export default function Home() {
         {/* Step 1 */}
         <section>
           <div className="mb-3 flex items-center gap-3">
-            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white sm:h-7 sm:w-7 sm:text-xs">1</span>
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white shadow-card sm:h-7 sm:w-7 sm:text-xs">1</span>
             <h2 className="font-serif text-lg font-semibold sm:text-xl">Source Material</h2>
           </div>
-          <div className="rounded-lg border border-border bg-card p-4 shadow-sm sm:p-6">
+          <div className="rounded-xl border border-border bg-card/95 shadow-card backdrop-blur-sm p-4 sm:p-6">
             <div className="space-y-4">
               <ImageUpload onImagesChanged={handleImagesChanged} />
 
@@ -265,12 +340,18 @@ export default function Home() {
                 <div className="flex-1 border-t border-border" />
               </div>
 
-              <textarea
-                value={additionalText}
-                onChange={(e) => setAdditionalText(e.target.value)}
-                placeholder="Type or paste text here..."
-                className="h-24 w-full resize-none rounded-md border border-border bg-surface p-3 text-sm leading-relaxed text-foreground placeholder:text-muted/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15 sm:h-28 sm:p-4"
-              />
+              <div className="flex gap-2">
+                <textarea
+                  value={additionalText}
+                  onChange={(e) => setAdditionalText(e.target.value)}
+                  placeholder="Type or paste text here..."
+                  className="h-24 flex-1 resize-none rounded-xl border border-border bg-surface p-3 text-sm leading-relaxed text-foreground placeholder:text-muted/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 focus:ring-offset-0 sm:h-28 sm:p-4"
+                />
+                <VoiceInputButton
+                  onText={(text) => setAdditionalText((prev) => (prev ? `${prev} ${text}` : text))}
+                  className="shrink-0 self-end"
+                />
+              </div>
             </div>
           </div>
         </section>
@@ -278,7 +359,7 @@ export default function Home() {
         {/* Step 2 */}
         <section>
           <div className="mb-3 flex items-center gap-3">
-            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white sm:h-7 sm:w-7 sm:text-xs">2</span>
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white shadow-card sm:h-7 sm:w-7 sm:text-xs">2</span>
             <h2 className="font-serif text-lg font-semibold sm:text-xl">Essay Settings</h2>
           </div>
           <EssayGenerator
@@ -288,11 +369,29 @@ export default function Home() {
           />
         </section>
 
+        {/* Step 3: placeholder when no essays yet */}
+        {projects.length === 0 && (
+          <section>
+            <div className="mb-3 flex items-center gap-3">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-dashed border-border text-[10px] font-bold text-muted sm:h-7 sm:w-7 sm:text-xs">3</span>
+              <h2 className="font-serif text-lg font-semibold text-muted sm:text-xl">Your Essays</h2>
+            </div>
+            <div className="rounded-xl border border-dashed border-border bg-surface/30 py-12 text-center">
+              <p className="text-sm font-medium text-muted">
+                Your essays will appear here after you generate.
+              </p>
+              <p className="mt-1 text-xs text-muted/80">
+                Drop an image or type something above, then click Generate essay.
+              </p>
+            </div>
+          </section>
+        )}
+
         {/* Step 3: Instagram-style feed */}
         {projects.length > 0 && (
           <section className="animate-[fadeIn_0.3s_ease-out]">
             <div className="mb-4 flex items-center gap-3">
-              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white sm:h-7 sm:w-7 sm:text-xs">3</span>
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white shadow-card sm:h-7 sm:w-7 sm:text-xs">3</span>
               <h2 className="font-serif text-lg font-semibold sm:text-xl">
                 {projects.length === 1 ? "Your Essay" : `Your Essays (${projects.length})`}
               </h2>
@@ -302,7 +401,7 @@ export default function Home() {
               {projects.map((project) => (
                 <article
                   key={project.id}
-                  className="overflow-hidden rounded-lg border border-border bg-card shadow-sm"
+                  className="overflow-hidden rounded-xl border border-border bg-card/95 shadow-card backdrop-blur-sm transition-shadow duration-200 hover:shadow-hover"
                 >
                   {/* Image header (Instagram-style) */}
                   {project.imagePreview && (
@@ -326,14 +425,37 @@ export default function Home() {
                         <h3 className="truncate font-serif text-sm font-semibold sm:text-base">
                           {project.title}
                         </h3>
+                        {savedToArchiveIds.has(project.id) && (
+                          <span className="mt-0.5 inline-flex items-center gap-1 text-[10px] font-medium text-primary">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-3 w-3">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            In archive
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
+                      <button
+                        onClick={() => {
+                          setDictionaryDrawerOpen(true);
+                          toast("Dictionary opened", "success");
+                        }}
+                        className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl p-1.5 text-muted transition-colors hover:bg-surface hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                        title="Open dictionary"
+                        aria-label="Open dictionary"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-4 w-4">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+                        </svg>
+                      </button>
+                      <VoiceOutputButton content={project.essay} />
                       <ExportMenu content={project.essay} title={project.title} />
                       <button
                         onClick={() => toggleExpand(project.id)}
-                        className="rounded-md p-1.5 text-muted hover:bg-surface hover:text-foreground"
+                        className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl p-1.5 text-muted transition-colors hover:bg-surface hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
                         title={project.isExpanded ? "Collapse" : "Expand"}
+                        aria-label={project.isExpanded ? "Collapse" : "Expand"}
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={`h-4 w-4 transition-transform ${project.isExpanded ? "rotate-180" : ""}`}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
@@ -373,6 +495,7 @@ export default function Home() {
                         highlights={project.highlights}
                         onHighlight={(text) => handleHighlight(project.id, text)}
                         onSave={handleSave}
+                        onSaveSuccess={() => setSavedToArchiveIds((prev) => new Set(prev).add(project.id))}
                         onRefine={(feedback) => handleRefine(project.id, feedback)}
                         isRefining={refiningProjectId === project.id}
                         versionLabel={
@@ -404,6 +527,11 @@ export default function Home() {
             </div>
           </section>
         )}
+
+        <DictionaryDrawer
+          open={dictionaryDrawerOpen}
+          onClose={() => setDictionaryDrawerOpen(false)}
+        />
       </div>
     </div>
   );

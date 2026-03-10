@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import Link from "next/link";
 import { useToast } from "@/components/Toast";
 import RichTextEditor from "@/components/RichTextEditor";
 import ExportMenu from "@/components/ExportMenu";
@@ -66,6 +67,7 @@ export default function HistoryPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [refiningId, setRefiningId] = useState<string | null>(null);
+  const archivedByProjectRef = useRef<Set<string>>(new Set());
   const { toast } = useToast();
 
   const fetchEntries = useCallback(async () => {
@@ -155,12 +157,30 @@ export default function HistoryPage() {
         const response = await fetch("/api/highlights", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text, essayTitle: project.title, sourceId: project.id }),
+          body: JSON.stringify({
+            text,
+            essayTitle: project.title,
+            sourceId: project.id,
+            essayContent: project.content,
+          }),
         });
         if (!response.ok) throw new Error();
         setProjects((prev) =>
           prev.map((p) => (p.id === id ? { ...p, highlights: [...p.highlights, text] } : p)),
         );
+        if (!archivedByProjectRef.current.has(id)) {
+          try {
+            await fetch("/api/essays", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ title: project.title, content: project.content, tone: project.tone }),
+            });
+            archivedByProjectRef.current.add(id);
+            toast("Essay saved to Archive so you can find it anytime", "success");
+          } catch {
+            // Archive is best-effort
+          }
+        }
       } catch {
         toast("Failed to save highlight", "error");
       }
@@ -231,7 +251,7 @@ export default function HistoryPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search history..."
-            className="w-full rounded-md border border-border bg-white py-2.5 pl-10 pr-4 text-sm placeholder:text-muted/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15"
+            className="w-full rounded-xl border border-border bg-card py-2.5 pl-10 pr-4 text-sm placeholder:text-muted/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 focus:ring-offset-0"
           />
         </div>
       </div>
@@ -239,7 +259,7 @@ export default function HistoryPage() {
       {loading ? (
         <div className="space-y-6">
           {[1, 2].map((i) => (
-            <div key={i} className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
+            <div key={i} className="overflow-hidden rounded-xl border border-border bg-card shadow-card">
               <div className="skeleton h-48 w-full" />
               <div className="p-4">
                 <div className="skeleton mb-3 h-5 w-1/3" />
@@ -250,14 +270,19 @@ export default function HistoryPage() {
           ))}
         </div>
       ) : projects.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border py-16 text-center">
+        <div className="rounded-xl border border-dashed border-border py-16 text-center">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor" className="mx-auto mb-4 h-12 w-12 text-muted/30">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           <p className="font-serif text-lg font-medium text-muted/50">No history yet</p>
           <p className="mt-1 text-sm text-muted/40">
-            {search ? "No matches found" : "Generated essays will automatically appear here"}
+            {search ? "No matches found" : "Your generated essays will show up here. Generate one from the Writer to get started."}
           </p>
+          {!search && (
+            <Link href="/" className="mt-4 inline-block rounded-xl bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover">
+              Go to Writer
+            </Link>
+          )}
         </div>
       ) : (
         <div className="space-y-8">
@@ -278,7 +303,7 @@ export default function HistoryPage() {
                 {group.projects.map((project) => (
                   <article
                     key={project.id}
-                    className="group overflow-hidden rounded-lg border border-border bg-card shadow-sm transition-shadow hover:shadow-md"
+                    className="group overflow-hidden rounded-xl border border-border bg-card shadow-card transition-shadow duration-200 hover:shadow-hover"
                   >
                     {/* Image header (Instagram-style) */}
                     {project.imageData && (
@@ -323,7 +348,7 @@ export default function HistoryPage() {
                         <button
                           onClick={() => saveToArchive(project)}
                           disabled={savingId === project.id}
-                          className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-primary hover:bg-primary-light disabled:opacity-50"
+                          className="flex items-center gap-1 rounded-xl px-2 py-1.5 text-xs font-medium text-primary hover:bg-primary-light disabled:opacity-50"
                           title="Save to Archive"
                         >
                           {savingId === project.id ? (
@@ -338,13 +363,13 @@ export default function HistoryPage() {
                         <ExportMenu content={project.content} title={project.title} />
                         {deleteConfirm === project.id ? (
                           <div className="flex items-center gap-1">
-                            <button onClick={() => deleteEntry(project.id)} className="rounded-md bg-danger px-2 py-1.5 text-xs font-medium text-white hover:bg-danger-hover">Confirm</button>
-                            <button onClick={() => setDeleteConfirm(null)} className="rounded-md px-2 py-1.5 text-xs text-muted hover:bg-surface">Cancel</button>
+                            <button onClick={() => deleteEntry(project.id)} className="rounded-xl bg-danger px-2 py-1.5 text-xs font-medium text-white hover:bg-danger-hover">Confirm</button>
+                            <button onClick={() => setDeleteConfirm(null)} className="rounded-xl px-2 py-1.5 text-xs text-muted hover:bg-surface">Cancel</button>
                           </div>
                         ) : (
                           <button
                             onClick={() => setDeleteConfirm(project.id)}
-                            className="rounded-md p-1.5 text-muted transition-opacity hover:bg-red-50 hover:text-danger sm:opacity-0 sm:group-hover:opacity-100"
+                            className="rounded-xl p-1.5 text-muted transition-opacity hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-danger sm:opacity-0 sm:group-hover:opacity-100"
                             title="Remove"
                           >
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-4 w-4">
@@ -354,7 +379,7 @@ export default function HistoryPage() {
                         )}
                         <button
                           onClick={() => toggleExpand(project.id)}
-                          className="rounded-md p-1.5 text-muted hover:bg-surface hover:text-foreground"
+                          className="rounded-xl p-1.5 text-muted hover:bg-surface hover:text-foreground"
                         >
                           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={`h-4 w-4 transition-transform ${project.isExpanded ? "rotate-180" : ""}`}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />

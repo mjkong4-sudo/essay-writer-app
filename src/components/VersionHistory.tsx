@@ -14,7 +14,7 @@ interface Props {
 
 export default function VersionHistory({ versions, activeIndex, onSelect }: Props) {
   return (
-    <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
+    <div className="rounded-xl border border-border bg-card p-4 shadow-card">
       <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-muted">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-4 w-4">
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -36,7 +36,7 @@ export default function VersionHistory({ versions, activeIndex, onSelect }: Prop
             <button
               key={index}
               onClick={() => onSelect(index)}
-              className={`group flex shrink-0 flex-col items-start rounded-md border px-3 py-2 text-left transition-all ${
+              className={`group flex shrink-0 flex-col items-start rounded-xl border px-3 py-2 text-left transition-all ${
                 isActive
                   ? "border-primary/30 bg-primary-light"
                   : "border-border bg-surface hover:border-primary/20"

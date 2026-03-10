@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { useToast } from "@/components/Toast";
 import ExportMenu from "@/components/ExportMenu";
 import { formatDate, truncate } from "@/lib/utils";
@@ -45,21 +46,23 @@ export default function ArchivePage() {
   }, [fetchEssays]);
 
   const toggleFavorite = async (id: string, current: boolean) => {
+    const next = !current;
+    setEssays((prev) =>
+      prev.map((e) => (e.id === id ? { ...e, isFavorite: next } : e)),
+    );
     try {
       const response = await fetch(`/api/essays/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isFavorite: !current }),
+        body: JSON.stringify({ isFavorite: next }),
       });
       if (!response.ok) throw new Error();
-      setEssays((prev) =>
-        prev.map((e) =>
-          e.id === id ? { ...e, isFavorite: !current } : e,
-        ),
-      );
-      toast(!current ? "Added to favorites" : "Removed from favorites", "success");
+      toast(next ? "Added to favorites" : "Removed from favorites", "success");
     } catch {
-      toast("Failed to update", "error");
+      setEssays((prev) =>
+        prev.map((e) => (e.id === id ? { ...e, isFavorite: current } : e)),
+      );
+      toast("Failed to update. Please try again.", "error");
     }
   };
 
@@ -94,15 +97,15 @@ export default function ArchivePage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search essays..."
-            className="w-full rounded-md border border-border bg-white py-2.5 pl-10 pr-4 text-sm placeholder:text-muted/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15"
+            className="w-full rounded-xl border border-border bg-card py-2.5 pl-10 pr-4 text-sm placeholder:text-muted/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 focus:ring-offset-0"
           />
         </div>
         <button
           onClick={() => setShowFavorites(!showFavorites)}
-          className={`flex items-center gap-1.5 rounded-md px-4 py-2.5 text-sm font-medium transition-colors ${
+          className={`flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors ${
             showFavorites
               ? "bg-amber-50 text-amber-700 border border-amber-200"
-              : "border border-border bg-white text-muted hover:text-foreground"
+              : "border border-border bg-card text-muted hover:text-foreground"
           }`}
         >
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill={showFavorites ? "currentColor" : "none"} stroke="currentColor" strokeWidth={1.5} className="h-4 w-4">
@@ -115,7 +118,7 @@ export default function ArchivePage() {
       {loading ? (
         <div className="space-y-4">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="rounded-lg border border-border bg-card p-6 shadow-sm">
+            <div key={i} className="rounded-xl border border-border bg-card p-6 shadow-card">
               <div className="skeleton mb-3 h-5 w-1/3" />
               <div className="skeleton mb-2 h-4 w-full" />
               <div className="skeleton h-4 w-2/3" />
@@ -123,7 +126,7 @@ export default function ArchivePage() {
           ))}
         </div>
       ) : essays.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border py-16 text-center">
+        <div className="rounded-xl border border-dashed border-border py-16 text-center">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor" className="mx-auto mb-4 h-12 w-12 text-muted/30">
             <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m8.25 3v6.75m0 0l-3-3m3 3l3-3M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
           </svg>
@@ -131,15 +134,20 @@ export default function ArchivePage() {
           <p className="mt-1 text-sm text-muted/40">
             {search || showFavorites
               ? "Try adjusting your search or filters"
-              : "Generate your first essay and save it here"}
+              : "Saved essays will appear here. Save from the Writer after generating."}
           </p>
+          {!search && !showFavorites && (
+            <Link href="/" className="mt-4 inline-block rounded-xl bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover">
+              Go to Writer
+            </Link>
+          )}
         </div>
       ) : (
         <div className="space-y-4">
           {essays.map((essay) => (
             <div
               key={essay.id}
-              className="group rounded-lg border border-border bg-card shadow-sm transition-shadow hover:shadow-md"
+              className="group rounded-xl border border-border bg-card shadow-card transition-shadow duration-200 hover:shadow-hover"
             >
               <div className="p-4 sm:p-6">
                 <div className="mb-2 flex items-start justify-between gap-3 sm:gap-4">
@@ -168,7 +176,7 @@ export default function ArchivePage() {
                       onClick={() =>
                         toggleFavorite(essay.id, essay.isFavorite)
                       }
-                      className="rounded-md p-1.5 hover:bg-amber-50"
+                      className="rounded-xl p-1.5 hover:bg-amber-50"
                       title={
                         essay.isFavorite
                           ? "Remove from favorites"
@@ -195,13 +203,13 @@ export default function ArchivePage() {
                       <div className="flex items-center gap-1">
                         <button
                           onClick={() => deleteEssay(essay.id)}
-                          className="rounded-md bg-danger px-2 py-1.5 text-xs font-medium text-white hover:bg-danger-hover"
+                          className="rounded-xl bg-danger px-2 py-1.5 text-xs font-medium text-white hover:bg-danger-hover"
                         >
                           Confirm
                         </button>
                         <button
                           onClick={() => setDeleteConfirm(null)}
-                          className="rounded-md px-2 py-1.5 text-xs text-muted hover:bg-surface"
+                          className="rounded-xl px-2 py-1.5 text-xs text-muted hover:bg-surface"
                         >
                           Cancel
                         </button>
@@ -209,7 +217,7 @@ export default function ArchivePage() {
                     ) : (
                       <button
                         onClick={() => setDeleteConfirm(essay.id)}
-                        className="rounded-md p-1.5 text-muted transition-opacity hover:bg-red-50 hover:text-danger sm:opacity-0 sm:group-hover:opacity-100"
+                        className="rounded-xl p-1.5 text-muted transition-opacity hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-danger sm:opacity-0 sm:group-hover:opacity-100"
                         title="Delete essay"
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-5 w-5">
@@ -221,7 +229,7 @@ export default function ArchivePage() {
                 </div>
 
                 {expandedId === essay.id ? (
-                  <div className="mt-4 whitespace-pre-wrap rounded-md border border-border bg-surface p-4 text-sm leading-relaxed">
+                  <div className="mt-4 whitespace-pre-wrap rounded-xl border border-border bg-surface p-4 text-sm leading-relaxed">
                     {essay.content}
                   </div>
                 ) : (

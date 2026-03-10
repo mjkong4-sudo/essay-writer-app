@@ -1,8 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getAuthIdentity, getWriteIdentity } from "@/lib/auth-identity";
+
+function buildWhere(identity: { userId: string | null; anonymousSessionId: string | null }) {
+  if (identity.userId) return { userId: identity.userId };
+  if (identity.anonymousSessionId) return { anonymousSessionId: identity.anonymousSessionId };
+  return { userId: null, anonymousSessionId: null };
+}
 
 export async function GET(request: NextRequest) {
   try {
+    const identity = await getAuthIdentity(request);
     const { searchParams } = new URL(request.url);
     const search = searchParams.get("search") || "";
 
@@ -10,6 +18,7 @@ export async function GET(request: NextRequest) {
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
     const where: Record<string, unknown> = {
+      ...buildWhere(identity),
       createdAt: { gte: sevenDaysAgo },
     };
 
@@ -37,6 +46,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const identity = await getWriteIdentity(request);
     const { title, content, tone, language, imageData } = await request.json();
 
     if (!content?.trim()) {
@@ -53,6 +63,8 @@ export async function POST(request: NextRequest) {
         tone: tone || "formal academic style",
         language: language || "English",
         imageData: imageData || null,
+        userId: identity.userId ?? undefined,
+        anonymousSessionId: identity.anonymousSessionId ?? undefined,
       },
     });
 
@@ -68,11 +80,26 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    const identity = await getAuthIdentity(request);
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
 
     if (!id) {
       return NextResponse.json({ error: "ID is required" }, { status: 400 });
+    }
+
+    const entry = await prisma.generationHistory.findFirst({
+      where: {
+        id,
+        ...(identity.userId
+          ? { userId: identity.userId }
+          : identity.anonymousSessionId
+            ? { anonymousSessionId: identity.anonymousSessionId }
+            : { userId: null, anonymousSessionId: null }),
+      },
+    });
+    if (!entry) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
     await prisma.generationHistory.delete({ where: { id } });

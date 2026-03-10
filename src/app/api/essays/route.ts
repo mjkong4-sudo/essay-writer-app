@@ -1,13 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getAuthIdentity, getWriteIdentity } from "@/lib/auth-identity";
+
+function buildWhere(identity: { userId: string | null; anonymousSessionId: string | null }) {
+  if (identity.userId) return { userId: identity.userId };
+  if (identity.anonymousSessionId) return { anonymousSessionId: identity.anonymousSessionId };
+  return { userId: null, anonymousSessionId: null };
+}
 
 export async function GET(request: NextRequest) {
   try {
+    const identity = await getAuthIdentity(request);
     const { searchParams } = new URL(request.url);
     const search = searchParams.get("search") || "";
     const favoritesOnly = searchParams.get("favorites") === "true";
 
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = { ...buildWhere(identity) };
 
     if (search) {
       where.OR = [
@@ -38,6 +46,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const identity = await getWriteIdentity(request);
     const { title, content, tone, sourceText } = await request.json();
 
     if (!title?.trim() || !content?.trim()) {
@@ -52,6 +61,8 @@ export async function POST(request: NextRequest) {
         title,
         content,
         tone: tone || "formal academic style",
+        userId: identity.userId ?? undefined,
+        anonymousSessionId: identity.anonymousSessionId ?? undefined,
         sources: sourceText
           ? {
               create: [{ type: "ocr", content: sourceText }],

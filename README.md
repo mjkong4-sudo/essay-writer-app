@@ -1,4 +1,4 @@
-# AI Essay Writer
+# ThinkDraft
 
 An AI-powered web application that generates polished essays from images. Upload an image, let GPT-4o read and extract text (Korean + English), then craft a well-structured essay with tone controls, translation, and export features.
 
