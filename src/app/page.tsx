@@ -480,6 +480,11 @@ export default function Home() {
               <p className="text-sm text-muted">
                 Refined text will appear here when you click Refine in English.
               </p>
+              {imageFiles.length > 1 && (
+                <p className="mt-1.5 text-xs text-muted/80">
+                  With multiple images, we refine them together into one clearer version.
+                </p>
+              )}
             </div>
           )}
         </section>

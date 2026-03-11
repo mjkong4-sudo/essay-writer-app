@@ -186,6 +186,7 @@ export default function EssayGenerator({ imageFiles, additionalText, onEssaysGen
     }
   };
 
+  // Refine always uses all current images + text as one input (ignores multiImageMode).
   const refineInEnglish = async () => {
     if (!hasInput) {
       toast("Please upload an image or enter some text first", "error");
@@ -305,6 +306,9 @@ export default function EssayGenerator({ imageFiles, additionalText, onEssaysGen
                 One essay per image
               </button>
             </div>
+            <p className="mt-1.5 text-xs text-muted/80">
+              Refine in English always uses all images + text as one input.
+            </p>
             {multiImageMode === "multiple" && imageFiles.length > 1 && (
               <div className="mt-2">
                 <label className="mb-1 block text-xs font-medium text-muted">
