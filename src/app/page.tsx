@@ -48,6 +48,9 @@ export default function Home() {
   const [additionalText, setAdditionalText] = useState("");
   const [projects, setProjects] = useState<EssayProject[]>([]);
   const [refiningProjectId, setRefiningProjectId] = useState<string | null>(null);
+  const [refinedResult, setRefinedResult] = useState<string | null>(null);
+  const [refiningFurther, setRefiningFurther] = useState(false);
+  const [refinerFeedback, setRefinerFeedback] = useState("");
   const [savedToArchiveIds, setSavedToArchiveIds] = useState<Set<string>>(new Set());
   const [guestHintDismissed, setGuestHintDismissed] = useState(false);
   const [dictionaryDrawerOpen, setDictionaryDrawerOpen] = useState(false);
@@ -113,9 +116,8 @@ export default function Home() {
   const handleEssaysGenerated = useCallback(
     (results: GeneratedEssay[]) => {
       const newProjects: EssayProject[] = results.map((r, i) => {
-        const isRefined = r.isRefined === true;
-        const title = isRefined ? "Refined" : parseTitle(r.essay);
-        const label = isRefined ? "Refined" : r.imageIndex >= 0 ? `Image ${r.imageIndex + 1}` : "Text";
+        const title = parseTitle(r.essay);
+        const label = r.imageIndex >= 0 ? `Image ${r.imageIndex + 1}` : "Text";
         const preview = r.imageIndex >= 0 ? imagePreviews.get(r.imageIndex) ?? null : null;
         return {
           id: `${Date.now()}-${i}-${r.imageIndex}`,
@@ -123,7 +125,7 @@ export default function Home() {
           imagePreview: preview,
           essay: r.essay,
           title,
-          versions: [{ content: r.essay, feedback: isRefined ? "Refined" : "Initial generation", timestamp: new Date() }],
+          versions: [{ content: r.essay, feedback: "Initial generation", timestamp: new Date() }],
           activeVersionIndex: 0,
           isExpanded: false,
           highlights: [],
@@ -135,7 +137,7 @@ export default function Home() {
 
       (async () => {
         for (const r of results) {
-          const title = r.isRefined ? "Refined" : parseTitle(r.essay);
+          const title = parseTitle(r.essay);
           let imgData: string | undefined;
           if (r.imageIndex >= 0 && imageFiles[r.imageIndex]) {
             try {
@@ -270,6 +272,30 @@ export default function Home() {
     [],
   );
 
+  const handleRefineFurther = useCallback(
+    async (feedback: string) => {
+      if (!refinedResult?.trim() || !feedback.trim()) return;
+      setRefiningFurther(true);
+      try {
+        const response = await fetch("/api/refine", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ essay: refinedResult, feedback: feedback.trim() }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Refinement failed");
+        setRefinedResult(data.essay);
+        setRefinerFeedback("");
+        toast("Refined again", "success");
+      } catch (error) {
+        toast(error instanceof Error ? error.message : "Refinement failed", "error");
+      } finally {
+        setRefiningFurther(false);
+      }
+    },
+    [refinedResult, toast],
+  );
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && hasInput) {
@@ -370,7 +396,92 @@ export default function Home() {
             imageFiles={imageFiles}
             additionalText={additionalText}
             onEssaysGenerated={handleEssaysGenerated}
+            onRefinedResult={setRefinedResult}
           />
+        </section>
+
+        {/* Refined result (Verbaflow-style): separate from essay feed */}
+        <section aria-label="Refined result">
+          {refinedResult !== null ? (
+            <div className="space-y-4">
+              <h2 className="flex items-center gap-2 font-serif text-lg font-semibold sm:text-xl">
+                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary" aria-hidden>
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-4 w-4">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
+                  </svg>
+                </span>
+                Refined result
+              </h2>
+              <div className="rounded-xl border-l-4 border-l-primary border border-border bg-card/95 p-4 shadow-card sm:p-5">
+                <span className="mb-2 inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-md bg-surface text-[10px] font-bold text-muted">1</span>
+                  Refined
+                </span>
+                <p className="text-[15px] leading-relaxed text-foreground whitespace-pre-wrap">{refinedResult}</p>
+                <div className="mt-4 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(refinedResult);
+                      toast("Copied to clipboard!", "success");
+                    }}
+                    className="flex items-center gap-1.5 rounded-xl border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground hover:bg-primary-light focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    aria-label="Copy to clipboard"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-4 w-4">
+                      <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+                      <path d="M4 16c-1.1 0-2-.9-2-2 V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+                    </svg>
+                    Copy
+                  </button>
+                  <VoiceOutputButton content={refinedResult} className="rounded-xl border border-border bg-surface p-2" />
+                </div>
+              </div>
+              <div>
+                <label htmlFor="refiner-feedback" className="mb-2 block text-xs font-semibold uppercase tracking-wider text-muted">
+                  Refine further
+                </label>
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleRefineFurther(refinerFeedback);
+                  }}
+                  className="flex gap-2"
+                >
+                  <input
+                    id="refiner-feedback"
+                    type="text"
+                    value={refinerFeedback}
+                    onChange={(e) => setRefinerFeedback(e.target.value)}
+                    placeholder='e.g. shorter, more formal, focus on X'
+                    disabled={refiningFurther}
+                    className="flex-1 rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 focus:ring-offset-0 disabled:opacity-50"
+                  />
+                  <button
+                    type="submit"
+                    disabled={refiningFurther || !refinerFeedback.trim()}
+                    className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  >
+                    {refiningFurther ? (
+                      <>
+                        <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" aria-hidden />
+                        Refining…
+                      </>
+                    ) : (
+                      "Refine"
+                    )}
+                  </button>
+                </form>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed border-border bg-surface/30 py-8 text-center">
+              <p className="text-sm text-muted">
+                Refined text will appear here when you click Refine in English.
+              </p>
+            </div>
+          )}
         </section>
 
         {/* Step 3: placeholder when no essays yet */}
@@ -385,7 +496,7 @@ export default function Home() {
                 Your essays will appear here after you generate.
               </p>
               <p className="mt-1 text-xs text-muted/80">
-                Drop an image or type something above, then click Generate essay or Refine in English (refined text only, no essay).
+                Drop an image or type something above, then click Generate essay. Use Refine in English for refined text in the panel above.
               </p>
             </div>
           </section>
@@ -423,7 +534,7 @@ export default function Home() {
                   <div className="flex items-center justify-between border-b border-border px-4 py-3">
                     <div className="flex items-center gap-2 overflow-hidden">
                       <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
-                        {project.label === "Refined" ? "R" : project.label === "Text" ? "T" : project.label.replace("Image ", "#")}
+                        {project.label === "Text" ? "T" : project.label.replace("Image ", "#")}
                       </div>
                       <div className="min-w-0">
                         <h3 className="truncate font-serif text-sm font-semibold sm:text-base">

@@ -6,14 +6,14 @@ import { useToast } from "./Toast";
 export interface GeneratedEssay {
   essay: string;
   imageIndex: number;
-  /** When true, treat as refined text (not an essay) for label and title. */
-  isRefined?: boolean;
 }
 
 interface Props {
   imageFiles: File[];
   additionalText: string;
   onEssaysGenerated: (essays: GeneratedEssay[]) => void;
+  /** When provided, Refine in English sends result here instead of the essay feed. */
+  onRefinedResult?: (text: string) => void;
 }
 
 const TONE_PRESETS = [
@@ -35,7 +35,7 @@ type MultiImageMode = "combine" | "multiple";
 const BATCH_SIZE_OPTIONS = [3, 5, 10] as const;
 const USER_FACING_ERROR = "We couldn't generate the essay. Check your connection and try again.";
 
-export default function EssayGenerator({ imageFiles, additionalText, onEssaysGenerated }: Props) {
+export default function EssayGenerator({ imageFiles, additionalText, onEssaysGenerated, onRefinedResult }: Props) {
   const [toneInput, setToneInput] = useState("formal academic style");
   const [language, setLanguage] = useState("English");
   const [multiImageMode, setMultiImageMode] = useState<MultiImageMode>("multiple");
@@ -202,8 +202,13 @@ export default function EssayGenerator({ imageFiles, additionalText, onEssaysGen
       const response = await fetch("/api/refine-english", { method: "POST", body: formData });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Refine failed");
-      onEssaysGenerated([{ essay: data.essay as string, imageIndex: 0, isRefined: true }]);
-      toast("Refined!", "success");
+      if (onRefinedResult) {
+        onRefinedResult(data.essay as string);
+        toast("Refined!", "success");
+      } else {
+        onEssaysGenerated([{ essay: data.essay as string, imageIndex: 0 }]);
+        toast("Refined!", "success");
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Refine failed";
       toast(message, "error");
