@@ -183,14 +183,14 @@ export default function ImageUpload({ onImagesChanged }: Props) {
         />
         {images.length === 0 ? (
           <>
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="mx-auto h-10 w-10 text-muted/40">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="mx-auto h-10 w-10 text-muted/40" aria-hidden>
               <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
             </svg>
             <p className="mt-3 text-base font-medium text-foreground/70">
-              Drop images, click to upload, or paste from clipboard
+              Drop an image here, or type in the box below to get started
             </p>
             <p className="mt-1 text-sm text-muted">
-              Add several images at once; generate in batches to see each batch appear in the feed as it completes
+              You can also click to upload, paste from clipboard, or add several images and generate in batches
             </p>
           </>
         ) : (

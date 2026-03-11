@@ -2,17 +2,28 @@ import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import type { ChatCompletionContentPart } from "openai/resources/chat/completions";
 
-const CORS_ORIGIN = process.env.ESSAY_CORS_ORIGIN || "http://localhost:8000";
+const CORS_ORIGINS = (process.env.ESSAY_CORS_ORIGIN || "http://localhost:8000")
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
 
-function withCors(res: NextResponse): NextResponse {
-  res.headers.set("Access-Control-Allow-Origin", CORS_ORIGIN);
+/** Only allow the request's origin when it is in ESSAY_CORS_ORIGIN (comma-separated). Never reflect a different origin. */
+function getAllowedOrigin(request: NextRequest): string | null {
+  const origin = request.headers.get("origin");
+  if (!origin) return null;
+  return CORS_ORIGINS.includes(origin) ? origin : null;
+}
+
+function withCors(request: NextRequest, res: NextResponse): NextResponse {
+  const allow = getAllowedOrigin(request);
+  if (allow) res.headers.set("Access-Control-Allow-Origin", allow);
   res.headers.set("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.headers.set("Access-Control-Allow-Headers", "Content-Type");
+  res.headers.set("Access-Control-Allow-Headers", "Content-Type, Accept");
   return res;
 }
 
-export async function OPTIONS() {
-  return withCors(new NextResponse(null, { status: 200 }));
+export async function OPTIONS(request: NextRequest) {
+  return withCors(request, new NextResponse(null, { status: 200 }));
 }
 
 export async function POST(request: NextRequest) {
@@ -27,6 +38,7 @@ export async function POST(request: NextRequest) {
     const hasImages = images.length > 0 && images.every((f) => f && f.size > 0);
     if (!hasImages && !text?.trim()) {
       return withCors(
+        request,
         NextResponse.json(
           { error: "Please provide an image or text to generate an essay from" },
           { status: 400 },
@@ -36,6 +48,7 @@ export async function POST(request: NextRequest) {
 
     if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === "your_openai_api_key_here") {
       return withCors(
+        request,
         NextResponse.json(
           { error: "OpenAI API key is not configured. Add it to your .env file." },
           { status: 500 },
@@ -116,11 +129,14 @@ TITLE: [essay title]
 
     const essay = completion.choices[0].message.content;
     if (!essay) throw new Error("No content generated");
-    return withCors(NextResponse.json({ essay }));
+    return withCors(request, NextResponse.json({ essay }));
   } catch (error: unknown) {
     console.error("Essay generation error:", error);
-    const message =
-      error instanceof Error ? error.message : "Failed to generate essay";
-    return withCors(NextResponse.json({ error: message }, { status: 500 }));
+    const raw = error instanceof Error ? error.message : "Failed to generate essay";
+    const userMessage =
+      !raw || raw.length > 120
+        ? "Generation failed. Please try again."
+        : raw;
+    return withCors(request, NextResponse.json({ error: userMessage }, { status: 500 }));
   }
 }

@@ -68,6 +68,10 @@ Open [http://localhost:3000](http://localhost:3000).
 
 - `Ctrl+Enter` / `Cmd+Enter` -- Generate essay
 
+## For external clients
+
+If you're integrating the **Generate essay** API from another app (e.g. Instagram archive viewer, your own front end), see **[API_FOR_EXTERNAL_CLIENTS.md](./API_FOR_EXTERNAL_CLIENTS.md)** for the request/response contract, CORS setup, and checklist.
+
 ## Switching to PostgreSQL
 
 To use PostgreSQL instead of SQLite, update `prisma/schema.prisma`:

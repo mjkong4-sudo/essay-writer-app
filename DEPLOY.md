@@ -50,7 +50,7 @@ git push -u origin main
    | `AUTH_URL`       | Your production URL, e.g. `https://your-app.vercel.app`. (Vercel often sets this automatically.) |
    | `DATABASE_URL`   | Neon **pooled** connection string (from Neon dashboard). |
    | `DIRECT_URL`     | Neon **direct** connection string (for migrations). |
-   | `ESSAY_CORS_ORIGIN` | (Optional) If the archive viewer calls this API from another origin, set it to that origin, e.g. `https://your-archive-site.com`. |
+   | `ESSAY_CORS_ORIGIN` | (Optional) Comma-separated origins allowed to call `/api/generate` (e.g. archive viewer). Use `http://localhost:8000` for local archive; add your deployed archive URL if needed. |
 
 5. Click **Deploy**. Vercel will run `npm install`, `prisma generate` (via postinstall), and `npm run build`.
 
@@ -81,6 +81,28 @@ DATABASE_URL="your_neon_pooled_url" DIRECT_URL="your_neon_direct_url" npx prisma
 - Open the Vercel URL (e.g. `https://your-app.vercel.app`).
 - Sign up at `/signup` to create an account (stored in Neon).
 - If the archive viewer will call the essay API from a different domain, set `ESSAY_CORS_ORIGIN` in Vercel to that domain (e.g. the URL where you host the Instagram archive viewer).
+
+---
+
+## 5.1 External API: `POST /api/generate` (e.g. Instagram archive viewer)
+
+Clients on **another origin** (e.g. a static archive viewer) can call the essay API if CORS is configured.
+
+**Contract**
+
+- **Request:** `POST /api/generate` with `FormData`: `image` (optional, one or more `File`), `text` (optional), `tone`, `language`, `mode` (optional, e.g. `"combine"` for multiple images).
+- **Success:** `200` and JSON `{ "essay": "<full essay text>" }`.
+- **Error:** `4xx`/`5xx` and JSON `{ "error": "<user-facing message>" }`.
+
+**Checklist for production**
+
+- [ ] **CORS:** In Vercel, set `ESSAY_CORS_ORIGIN` to the viewer origin(s), comma-separated (e.g. `http://localhost:8000`, `https://my-archive.vercel.app`). Only these origins receive `Access-Control-Allow-Origin`.
+- [ ] **OPTIONS:** `OPTIONS /api/generate` returns `200` with CORS headers so the browser allows the subsequent `POST`.
+- [ ] **Env:** `OPENAI_API_KEY` is set; if missing, the API returns `500` with `{ "error": "OpenAI API key is not configured. Add it to your .env file." }`.
+
+**Testing from the client**
+
+- `POST` to `https://your-app.vercel.app/api/generate` with `FormData`. If CORS is correct, the response is JSON with either `essay` or `error`. If CORS is wrong, the browser blocks the request and the client sees no response.
 
 ---
 

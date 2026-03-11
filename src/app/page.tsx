@@ -13,6 +13,7 @@ import VoiceInputButton from "@/components/VoiceInputButton";
 import VoiceOutputButton from "@/components/VoiceOutputButton";
 import DictionaryDrawer from "@/components/DictionaryDrawer";
 import { useToast } from "@/components/Toast";
+import { wordCount } from "@/lib/utils";
 
 const GUEST_HINT_KEY = "thinkdraft-guest-hint-dismissed";
 
@@ -383,7 +384,7 @@ export default function Home() {
                 Your essays will appear here after you generate.
               </p>
               <p className="mt-1 text-xs text-muted/80">
-                Drop an image or type something above, then click Generate essay.
+                Drop an image or type something above, then click Generate essay or Refine in English.
               </p>
             </div>
           </section>
@@ -436,6 +437,11 @@ export default function Home() {
                             if (sec < 3600) return `${Math.floor(sec / 60)}m ago`;
                             return project.createdAt.toLocaleDateString(undefined, { month: "short", day: "numeric" });
                           })()}
+                          {" · "}
+                          {wordCount(project.essay)} words
+                          {wordCount(project.essay) > 0 && (
+                            <> (~{Math.max(1, Math.ceil(wordCount(project.essay) / 200))} min read)</>
+                          )}
                         </p>
                         {savedToArchiveIds.has(project.id) && (
                           <span className="mt-0.5 inline-flex items-center gap-1 text-[10px] font-medium text-primary">

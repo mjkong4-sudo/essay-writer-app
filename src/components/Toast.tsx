@@ -58,13 +58,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <ToastContext value={{ toast }}>
+    <ToastContext.Provider value={{ toast }}>
       {children}
       <div
         className="fixed bottom-18 left-4 right-4 z-[100] flex flex-col gap-2 sm:bottom-4 sm:left-auto sm:right-4 sm:max-w-sm"
         role="status"
         aria-live="polite"
-        aria-atomic="false"
+        aria-atomic="true"
+        aria-relevant="additions"
       >
         {toasts.map((t) => (
           <div
@@ -89,7 +90,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             <span className="text-sm font-medium text-foreground">{t.message}</span>
             <button
               onClick={() => dismiss(t.id)}
-              className="ml-2 shrink-0 text-muted opacity-60 hover:opacity-100"
+              className="ml-2 shrink-0 rounded p-1 text-muted opacity-60 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-primary/30"
+              aria-label="Dismiss notification"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-4 w-4">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -98,6 +100,6 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           </div>
         ))}
       </div>
-    </ToastContext>
+    </ToastContext.Provider>
   );
 }
