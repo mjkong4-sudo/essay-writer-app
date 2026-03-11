@@ -113,8 +113,9 @@ export default function Home() {
   const handleEssaysGenerated = useCallback(
     (results: GeneratedEssay[]) => {
       const newProjects: EssayProject[] = results.map((r, i) => {
-        const title = parseTitle(r.essay);
-        const label = r.imageIndex >= 0 ? `Image ${r.imageIndex + 1}` : "Text";
+        const isRefined = r.isRefined === true;
+        const title = isRefined ? "Refined" : parseTitle(r.essay);
+        const label = isRefined ? "Refined" : r.imageIndex >= 0 ? `Image ${r.imageIndex + 1}` : "Text";
         const preview = r.imageIndex >= 0 ? imagePreviews.get(r.imageIndex) ?? null : null;
         return {
           id: `${Date.now()}-${i}-${r.imageIndex}`,
@@ -122,7 +123,7 @@ export default function Home() {
           imagePreview: preview,
           essay: r.essay,
           title,
-          versions: [{ content: r.essay, feedback: "Initial generation", timestamp: new Date() }],
+          versions: [{ content: r.essay, feedback: isRefined ? "Refined" : "Initial generation", timestamp: new Date() }],
           activeVersionIndex: 0,
           isExpanded: false,
           highlights: [],
@@ -134,7 +135,7 @@ export default function Home() {
 
       (async () => {
         for (const r of results) {
-          const title = parseTitle(r.essay);
+          const title = r.isRefined ? "Refined" : parseTitle(r.essay);
           let imgData: string | undefined;
           if (r.imageIndex >= 0 && imageFiles[r.imageIndex]) {
             try {
@@ -384,7 +385,7 @@ export default function Home() {
                 Your essays will appear here after you generate.
               </p>
               <p className="mt-1 text-xs text-muted/80">
-                Drop an image or type something above, then click Generate essay or Refine in English.
+                Drop an image or type something above, then click Generate essay or Refine in English (refined text only, no essay).
               </p>
             </div>
           </section>
@@ -422,7 +423,7 @@ export default function Home() {
                   <div className="flex items-center justify-between border-b border-border px-4 py-3">
                     <div className="flex items-center gap-2 overflow-hidden">
                       <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
-                        {project.label === "Text" ? "T" : project.label.replace("Image ", "#")}
+                        {project.label === "Refined" ? "R" : project.label === "Text" ? "T" : project.label.replace("Image ", "#")}
                       </div>
                       <div className="min-w-0">
                         <h3 className="truncate font-serif text-sm font-semibold sm:text-base">

@@ -6,6 +6,8 @@ import { useToast } from "./Toast";
 export interface GeneratedEssay {
   essay: string;
   imageIndex: number;
+  /** When true, treat as refined text (not an essay) for label and title. */
+  isRefined?: boolean;
 }
 
 interface Props {
@@ -200,8 +202,8 @@ export default function EssayGenerator({ imageFiles, additionalText, onEssaysGen
       const response = await fetch("/api/refine-english", { method: "POST", body: formData });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Refine failed");
-      onEssaysGenerated([{ essay: data.essay as string, imageIndex: 0 }]);
-      toast("Refined in English!", "success");
+      onEssaysGenerated([{ essay: data.essay as string, imageIndex: 0, isRefined: true }]);
+      toast("Refined!", "success");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Refine failed";
       toast(message, "error");
@@ -413,7 +415,7 @@ export default function EssayGenerator({ imageFiles, additionalText, onEssaysGen
           </button>
         </div>
         <p className="text-center text-xs text-muted/80">
-          Generate a full essay, or refine your input into clear English.
+          Generate a full essay, or refine your input into clear English (no essay).
         </p>
       </div>
     </div>
